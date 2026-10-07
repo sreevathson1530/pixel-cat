@@ -4,6 +4,7 @@ using System.Windows.Threading;
 using Pixel.App.Brain;
 using Pixel.App.Cat;
 using Pixel.App.Chat;
+using Pixel.App.History;
 using Pixel.App.Input;
 using Pixel.App.Screen;
 using Pixel.App.Tools;
@@ -37,6 +38,8 @@ internal sealed class AppHost : IDisposable
     public ScreenWatcher Screen { get; private set; } = null!;
     public BrainService Brain { get; private set; } = null!;
     public IProductivity Productivity { get; set; } = new NoProductivity();
+    public HistoryStore? History { get; private set; }
+    private HistoryWindow? _historyWindow;
     private readonly ErrorSpotter _errors = new();
     private ErrorFinding? _finding;
     public TrayIcon Tray => _tray!;
@@ -61,7 +64,8 @@ internal sealed class AppHost : IDisposable
         Vanishing += Screen.Stop;
         Revived += Screen.Start;
 
-        Chat = new ChatController(this, Screen.CaptureNowAsync, new ToolExecutor(() => Productivity));
+        History = OpenHistory();
+        Chat = new ChatController(this, Screen.CaptureNowAsync, new ToolExecutor(() => Productivity), History);
         Brain = new BrainService(() => Settings, msg => Chat.ConfirmAsync("Load my brain anyway?", msg), ToolDefinitions.All);
         if (Environment.GetEnvironmentVariable("PIXEL_FAKE_BRAIN") != "1") Chat.UseBrain(Brain.Brain);
         Vanishing += Brain.Unload;
@@ -78,6 +82,7 @@ internal sealed class AppHost : IDisposable
         _tray.ToggleAutoStart += () => SetAutoStart(!AutoStart.IsEnabled());
         _tray.Opening += () => _tray.SetState(!IsVanished, Cat.Staying, AutoStart.IsEnabled());
         _tray.Quit += () => Application.Current.Shutdown();
+        _tray.OpenHistory += ShowHistory;
 
         // Only the installed build registers itself; a dev build under bin\ never should.
         var devBuild = Environment.ProcessPath?.Contains(@"\bin\", StringComparison.OrdinalIgnoreCase) == true;
@@ -106,6 +111,33 @@ internal sealed class AppHost : IDisposable
         Cat.ClearAlert();
         _finding = null;
         _ = Chat.AskAsync($"What does this error mean, and how do I fix it?\n\n{line}");
+    }
+
+    private static HistoryStore? OpenHistory()
+    {
+        try
+        {
+            return new HistoryStore(HistoryStore.DefaultPath);
+        }
+        catch (Exception e)
+        {
+            Log.Error("history database unavailable", e);
+            return null;
+        }
+    }
+
+    private void ShowHistory()
+    {
+        if (History is null) return;
+        if (_historyWindow is { IsLoaded: true })
+        {
+            _historyWindow.Activate();
+            return;
+        }
+        _historyWindow = new HistoryWindow(History);
+        _historyWindow.Closed += (_, _) => _historyWindow = null;
+        _historyWindow.Show();
+        _historyWindow.Activate();
     }
 
     public void UpdateSettings(Settings settings)
@@ -156,6 +188,7 @@ internal sealed class AppHost : IDisposable
     {
         Screen?.Dispose();
         Brain?.Dispose();
+        History?.Dispose();
         _hooks?.Dispose();
         _tray?.Dispose();
     }

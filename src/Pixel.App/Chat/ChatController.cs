@@ -8,6 +8,7 @@ using Pixel.Core.Art;
 using Pixel.Core.Behaviour;
 using Pixel.Core.Brain;
 using Pixel.Core.Screen;
+using Pixel.Core.Storage;
 using Pixel.Core.Tools;
 
 namespace Pixel.App.Chat;
@@ -31,12 +32,15 @@ internal sealed class ChatController
 
     private const int MaxToolRounds = 3;
     private readonly ToolExecutor _tools;
+    private readonly HistoryStore? _history;
+    private long? _historyId;
 
-    public ChatController(AppHost host, Func<Task<ScreenSnapshot?>> snapshot, ToolExecutor tools)
+    public ChatController(AppHost host, Func<Task<ScreenSnapshot?>> snapshot, ToolExecutor tools, HistoryStore? history)
     {
         _host = host;
         _snapshot = snapshot;
         _tools = tools;
+        _history = history;
         host.ChatToggled += () => _ = ToggleAsync();
         host.Vanishing += () =>
         {
@@ -144,8 +148,35 @@ internal sealed class ChatController
         _window.SetIdle(true);
     }
 
+    /// <summary>Writes a message to local history as it happens (never the screen text).</summary>
+    private void Remember(ChatRole role, string content)
+    {
+        if (_history is null) return;
+        try
+        {
+            _historyId ??= _history.Start(DateTimeOffset.Now);
+            _history.Append(_historyId.Value, role, content, DateTimeOffset.Now);
+        }
+        catch (Exception e)
+        {
+            Log.Error("history write failed", e);
+        }
+    }
+
     private void EndConversation()
     {
+        if (_historyId is { } hid)
+        {
+            try
+            {
+                _history?.End(hid, DateTimeOffset.Now);
+            }
+            catch (Exception e)
+            {
+                Log.Error("history end failed", e);
+            }
+            _historyId = null;
+        }
         _turn?.Cancel();
         foreach (var p in _pendingConfirms.Values) p.TrySetResult(false);
         _pendingConfirms.Clear();
@@ -228,6 +259,7 @@ internal sealed class ChatController
         _turn?.Cancel();
         var cts = _turn = new CancellationTokenSource();
         _conversation.Add(new ChatMessage(ChatRole.User, text));
+        Remember(ChatRole.User, text);
         SetCatChat(ChatState.Thinking);
         var answer = new System.Text.StringBuilder();
         try
@@ -266,6 +298,7 @@ internal sealed class ChatController
                 if (calls.Count == 0)
                 {
                     if (roundText.Length > 0) _conversation.Add(new ChatMessage(ChatRole.Assistant, roundText.ToString()));
+                    Remember(ChatRole.Assistant, answer.ToString());
                     break;
                 }
 
@@ -304,7 +337,7 @@ internal sealed class ChatController
     /// <summary>Links in answers can be crafted from screen text, so every click is checked and confirmed.</summary>
     private async Task OpenLinkAsync(string? href)
     {
-        if (!UrlSafety.TryCheck(href, out var uri, out var error))
+        if (!UrlSafety.TryCheck(href, out var uri, out var error, h => System.Net.Dns.GetHostAddresses(h)))
         {
             var (id, _) = ShowAction("Link blocked", href ?? "", needsConfirm: false);
             _window?.Post(new { type = "actionResult", id, ok = false, text = error });
