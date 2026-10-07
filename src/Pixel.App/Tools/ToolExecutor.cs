@@ -23,7 +23,9 @@ internal sealed class ToolExecutor(Func<IProductivity> productivity)
                 ToolRequest.OpenUrl u => Open(u.Url.AbsoluteUri, "Opened the link."),
                 ToolRequest.WebSearch w => Open(w.Url.AbsoluteUri, $"Searched the web for \"{w.Query}\"."),
                 ToolRequest.OpenFile f => Open(f.Path, "Opened it."),
-                ToolRequest.OpenApp a => Open(a.Name, $"Opened {a.Name}."),
+                ToolRequest.OpenApp a => AppResolver.Resolve(a.Name) is { } target
+                    ? Open(target, $"Opened {a.Name}.")
+                    : (false, $"I couldn't find an installed app called \"{a.Name}\"."),
                 ToolRequest.Invalid i => (false, i.Error),
                 _ => (false, "I can't do that one."),
             };

@@ -58,8 +58,8 @@ public abstract record ToolRequest
         StartPomodoro p => ("Start Pomodoro", $"{p.WorkMinutes} min focus / {p.BreakMinutes} min break"),
         StopPomodoro => ("Stop Pomodoro", ""),
         AddNote n => (n.Pinned ? "Pin a note" : "Save a note", Short(n.Text)),
-        CopyToClipboard c => ("Copy to clipboard", Short(c.Text)),
-        OpenUrl u => ("Open link", u.Url.AbsoluteUri),
+        CopyToClipboard c => ("Copy to clipboard", c.Text), // the whole text: you approve exactly what gets copied
+        OpenUrl u => ("Open link", UrlSafety.Display(u.Url)),
         OpenApp a => ("Open app", a.Name),
         OpenFile f => ("Open file", f.Path),
         WebSearch w => ("Search the web", w.Query),
@@ -73,7 +73,6 @@ public abstract record ToolRequest
 /// <summary>Turns the model's raw tool calls into validated requests.</summary>
 public static class ToolArgs
 {
-    private static readonly char[] UnsafeAppChars = ['\\', '/', '"', '&', '|', '>', '<', '^'];
 
     public static ToolRequest Parse(ToolInvocation call, Func<string, bool> pathExists)
     {
@@ -115,17 +114,20 @@ public static class ToolArgs
                     ? new ToolRequest.CopyToClipboard(copy)
                     : new ToolRequest.Invalid("Nothing to copy.");
             case "open_url":
-                return Uri.TryCreate(Str(a, "url"), UriKind.Absolute, out var u) && u.Scheme is "http" or "https"
-                    ? new ToolRequest.OpenUrl(u)
-                    : new ToolRequest.Invalid("I only open http(s) web links.");
+                return UrlSafety.TryCheck(Str(a, "url"), out var u, out var urlError)
+                    ? new ToolRequest.OpenUrl(u!)
+                    : new ToolRequest.Invalid(urlError!);
             case "open_app":
-                return Str(a, "name") is { Length: > 0 } name && name.IndexOfAny(UnsafeAppChars) < 0
-                    ? new ToolRequest.OpenApp(name)
-                    : new ToolRequest.Invalid("That doesn't look like an app name.");
+            {
+                if (Str(a, "name") is not { Length: > 0 } name) return new ToolRequest.Invalid("Which app?");
+                return LaunchSafety.CheckApp(name) is { } appError ? new ToolRequest.Invalid(appError) : new ToolRequest.OpenApp(name);
+            }
             case "open_file":
-                return Str(a, "path") is { Length: > 0 } path && pathExists(path)
-                    ? new ToolRequest.OpenFile(path)
-                    : new ToolRequest.Invalid("I couldn't find that file.");
+            {
+                if (Str(a, "path") is not { Length: > 0 } path) return new ToolRequest.Invalid("Which file?");
+                if (LaunchSafety.CheckFile(path) is { } fileError) return new ToolRequest.Invalid(fileError);
+                return pathExists(path) ? new ToolRequest.OpenFile(path) : new ToolRequest.Invalid("I couldn't find that file.");
+            }
             case "web_search":
                 return Str(a, "query") is { Length: > 0 } q
                     ? new ToolRequest.WebSearch(q, new Uri("https://www.google.com/search?q=" + Uri.EscapeDataString(q)))

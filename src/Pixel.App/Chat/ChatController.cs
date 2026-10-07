@@ -201,7 +201,7 @@ internal sealed class ChatController
                 TrySetClipboard(m.GetProperty("text").GetString() ?? "");
                 break;
             case "openLink":
-                OpenLink(m.GetProperty("href").GetString());
+                _ = OpenLinkAsync(m.GetProperty("href").GetString());
                 break;
             case "close":
                 Hide();
@@ -301,10 +301,17 @@ internal sealed class ChatController
         catch (Exception e) { Log.Error("clipboard", e); }
     }
 
-    private static void OpenLink(string? href)
+    /// <summary>Links in answers can be crafted from screen text, so every click is checked and confirmed.</summary>
+    private async Task OpenLinkAsync(string? href)
     {
-        if (!Uri.TryCreate(href, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https")) return;
-        Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+        if (!UrlSafety.TryCheck(href, out var uri, out var error))
+        {
+            var (id, _) = ShowAction("Link blocked", href ?? "", needsConfirm: false);
+            _window?.Post(new { type = "actionResult", id, ok = false, text = error });
+            return;
+        }
+        if (await ConfirmAsync("Open this link?", UrlSafety.Display(uri!)))
+            Process.Start(new ProcessStartInfo(uri!.AbsoluteUri) { UseShellExecute = true })?.Dispose();
     }
 
     private static string AvatarDataUrl(Palette palette)

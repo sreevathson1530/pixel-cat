@@ -172,7 +172,15 @@ main::-webkit-scrollbar-thumb { background: var(--surface-2); border-radius: 8px
   background: var(--surface);
 }
 .action .title { font-weight: 600; font-size: 13px; }
-.action .detail { color: var(--muted); font-size: 12.5px; word-break: break-all; margin-top: 2px; }
+.action .detail {
+  color: var(--muted);
+  font-size: 12.5px;
+  word-break: break-all;
+  white-space: pre-wrap;
+  margin-top: 2px;
+  max-height: 160px;
+  overflow-y: auto;
+}
 .action .buttons { display: flex; gap: 8px; margin-top: 8px; }
 .action .buttons button {
   border: 1px solid var(--border);
