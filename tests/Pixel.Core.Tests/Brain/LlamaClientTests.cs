@@ -92,3 +92,38 @@ public class LlamaClientTests
             .GetProperty("properties").GetProperty("minutes").GetProperty("type").GetString());
     }
 }
+
+public class LlamaClientSecurityTests
+{
+    private sealed class Capture : HttpMessageHandler
+    {
+        public HttpRequestMessage? Request { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Request = request;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("data: [DONE]\n\n") });
+        }
+    }
+
+    [Fact]
+    public async Task Uses_the_live_endpoint_and_sends_the_api_key()
+    {
+        var capture = new Capture();
+        var client = new LlamaClient(new HttpClient(capture), () => (new Uri("http://127.0.0.1:51234/"), "s3cret"));
+        await foreach (var _ in client.StreamAsync([new ChatMessage(ChatRole.User, "hi")], null, CancellationToken.None)) { }
+
+        Assert.Equal("http://127.0.0.1:51234/v1/chat/completions", capture.Request!.RequestUri!.AbsoluteUri);
+        Assert.Equal("Bearer", capture.Request.Headers.Authorization!.Scheme);
+        Assert.Equal("s3cret", capture.Request.Headers.Authorization.Parameter);
+    }
+
+    [Fact]
+    public async Task No_live_server_is_an_error_not_a_crash()
+    {
+        var client = new LlamaClient(new HttpClient(new Capture()), () => null);
+        var events = new List<BrainEvent>();
+        await foreach (var e in client.StreamAsync([new ChatMessage(ChatRole.User, "hi")], null, CancellationToken.None)) events.Add(e);
+        Assert.IsType<ErrorEvent>(Assert.Single(events));
+    }
+}

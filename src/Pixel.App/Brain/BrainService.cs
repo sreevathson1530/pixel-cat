@@ -1,5 +1,8 @@
 using System.IO;
+using System.Net;
 using System.Net.Http;
+using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Windows.Threading;
 using Pixel.App.Shell;
 using Pixel.Core.Brain;
@@ -10,24 +13,24 @@ namespace Pixel.App.Brain;
 /// <summary>Builds the real brain from settings and unloads it when idle or when Pixel vanishes.</summary>
 internal sealed class BrainService : IDisposable
 {
-    public const int Port = 17860;
-    private readonly HttpClient _http = new() { BaseAddress = new Uri($"http://127.0.0.1:{Port}/"), Timeout = Timeout.InfiniteTimeSpan };
-    private readonly HttpClient _probeHttp = new() { BaseAddress = new Uri($"http://127.0.0.1:{Port}/"), Timeout = TimeSpan.FromSeconds(2) };
+    private readonly HttpClient _http = new() { Timeout = Timeout.InfiniteTimeSpan };
+    private readonly HttpClient _probeHttp = new() { Timeout = TimeSpan.FromSeconds(2) };
     private readonly DispatcherTimer _idleTimer = new() { Interval = TimeSpan.FromSeconds(30) };
+    private readonly LlamaLauncher _launcher = new();
     private readonly Func<Settings> _settings;
 
     public BrainService(Func<Settings> settings, Func<string, Task<bool>> askUser, IReadOnlyList<ToolSpec> tools)
     {
         _settings = settings;
-        Server = new ServerManager(new LlamaLauncher(), new HealthProbe(_probeHttp), () => DateTimeOffset.Now,
-            TimeSpan.FromMinutes(Math.Max(1, settings().IdleUnloadMinutes)));
+        Server = new ServerManager(_launcher, new HealthProbe(_probeHttp, () => Server!.Current, () => _launcher.LastProcessId),
+            () => DateTimeOffset.Now, TimeSpan.FromMinutes(Math.Max(1, settings().IdleUnloadMinutes)));
         Brain = new LlamaBrain(
             Server,
             () => ModelLocator.Find(_settings().ModelDirectory, _settings().ModelPath),
             OptionsFor,
             CheckMemory,
             askUser,
-            new LlamaClient(_http),
+            new LlamaClient(_http, LiveEndpoint),
             tools,
             () => DateTimeOffset.Now);
         _idleTimer.Tick += (_, _) =>
@@ -47,17 +50,32 @@ internal sealed class BrainService : IDisposable
         Log.Info("brain unloaded");
     }
 
+    /// <summary>Address and key of the server we launched — only once it is verified ready.</summary>
+    private (Uri, string?)? LiveEndpoint() =>
+        Server.IsAlive && Server.Current is { } o ? (new Uri($"http://127.0.0.1:{o.Port}/"), o.ApiKey) : null;
+
+    /// <summary>Fresh random port and API key for every launch, so no other local program can sit in between.</summary>
     private ServerOptions OptionsFor(string modelPath)
     {
         var s = _settings();
         var exe = LlamaPaths.FindServerExe(s.LlamaBackend)
-                  ?? throw new FileNotFoundException($"llama-server.exe for backend '{s.LlamaBackend}' not found");
+                  ?? throw new FileNotFoundException($"llama-server.exe for backend '{s.LlamaBackend}' not found next to Pixel");
         var threads = s.LlamaThreads > 0 ? s.LlamaThreads : Math.Clamp(Environment.ProcessorCount / 2 + 1, 4, 12);
         var gpuLayers = s.LlamaBackend == "cpu" ? 0 : 99;
         var extra = s.LlamaExtraArgs;
         if (s.LlamaBackend == "cpu" && !MemoryGate.CanRepack(MemoryInfo.Read().AvailableCommit, new FileInfo(modelPath).Length))
             extra += " --no-repack"; // keep weights memory-mapped when Windows can't spare the repack copy
-        return new ServerOptions(exe, modelPath, Port, s.ContextSize, threads, gpuLayers, extra);
+        return new ServerOptions(exe, modelPath, FreeLoopbackPort(), s.ContextSize, threads, gpuLayers, extra,
+            ApiKey: RandomNumberGenerator.GetHexString(48, lowercase: true));
+    }
+
+    private static int FreeLoopbackPort()
+    {
+        var l = new TcpListener(IPAddress.Loopback, 0);
+        l.Start();
+        var port = ((IPEndPoint)l.LocalEndpoint).Port;
+        l.Stop();
+        return port;
     }
 
     private MemoryVerdict CheckMemory(long modelBytes)
@@ -77,17 +95,18 @@ internal sealed class BrainService : IDisposable
     }
 }
 
-/// <summary>Locates bundled llama.cpp builds (runtime\llama\&lt;backend&gt;\llama-server.exe) next to the app or above it in dev.</summary>
+/// <summary>
+/// Locates bundled llama.cpp builds. Only the folder next to Pixel is trusted (runtime\llama\&lt;backend&gt;),
+/// plus an explicit PIXEL_LLAMA_DIR for development — never a search up through parent folders,
+/// where another account could plant an executable.
+/// </summary>
 internal static class LlamaPaths
 {
     public static string? FindServerExe(string backend)
     {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        for (var i = 0; i < 7 && dir is not null; i++, dir = dir.Parent)
-        {
-            var exe = Path.Combine(dir.FullName, "runtime", "llama", backend, "llama-server.exe");
-            if (File.Exists(exe)) return exe;
-        }
-        return null;
+        if (backend.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || backend.Contains("..")) return null;
+        var roots = new List<string> { Path.Combine(AppContext.BaseDirectory, "runtime", "llama") };
+        if (Environment.GetEnvironmentVariable("PIXEL_LLAMA_DIR") is { Length: > 0 } dev) roots.Add(dev);
+        return roots.Select(r => Path.Combine(r, backend, "llama-server.exe")).FirstOrDefault(File.Exists);
     }
 }

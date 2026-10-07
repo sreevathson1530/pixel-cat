@@ -72,6 +72,7 @@ public static class MemoryGate
     }
 }
 
+/// <param name="ApiKey">Per-launch secret, handed to the server through LLAMA_API_KEY — never on the command line.</param>
 public sealed record ServerOptions(
     string ExePath,
     string ModelPath,
@@ -79,7 +80,8 @@ public sealed record ServerOptions(
     int ContextSize,
     int Threads,
     int GpuLayers,
-    string ExtraArgs = "")
+    string ExtraArgs = "",
+    string? ApiKey = null)
 {
     public string Arguments =>
         $"-m \"{ModelPath}\" --host 127.0.0.1 --port {Port} -c {ContextSize} -np 1 -t {Threads} -ngl {GpuLayers} --jinja --no-webui {ExtraArgs}".Trim();
@@ -123,6 +125,9 @@ public sealed class ServerManager(
 
     public ServerState State { get; private set; } = ServerState.Stopped;
 
+    /// <summary>Options of the running (or starting) server: its port and API key.</summary>
+    public ServerOptions? Current { get; private set; }
+
     public bool IsAlive => State == ServerState.Ready && _process is { HasExited: false };
 
     public async Task<bool> EnsureReadyAsync(ServerOptions options, CancellationToken ct)
@@ -137,6 +142,7 @@ public sealed class ServerManager(
             for (var attempt = 0; attempt < 2; attempt++)
             {
                 State = ServerState.Starting;
+                Current = options;
                 _process = launcher.Launch(options);
                 if (await WaitUntilReadyAsync(ct))
                 {
@@ -187,5 +193,6 @@ public sealed class ServerManager(
     {
         if (_process is { HasExited: false } p) p.Kill();
         _process = null;
+        Current = null;
     }
 }

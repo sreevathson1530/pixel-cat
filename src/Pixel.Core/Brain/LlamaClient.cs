@@ -9,7 +9,8 @@ namespace Pixel.Core.Brain;
 public sealed record ToolSpec(string Name, string Description, string ParametersJson);
 
 /// <summary>Streams chat completions from llama-server's OpenAI-compatible endpoint as <see cref="BrainEvent"/>s.</summary>
-public sealed class LlamaClient(HttpClient http)
+/// <param name="endpoint">Live server address and API key; null when no server is running. Defaults to the client's BaseAddress.</param>
+public sealed class LlamaClient(HttpClient http, Func<(Uri BaseUri, string? ApiKey)?>? endpoint = null)
 {
     public async IAsyncEnumerable<BrainEvent> StreamAsync(
         IReadOnlyList<ChatMessage> messages,
@@ -56,12 +57,15 @@ public sealed class LlamaClient(HttpClient http)
 
     private async Task<(HttpResponseMessage? Response, string? Failure)> SendAsync(string body, CancellationToken ct)
     {
+        var target = endpoint is null ? (http.BaseAddress!, null) : endpoint();
+        if (target is not var (baseUri, apiKey)) return (null, "My brain isn't running right now — ask me again to wake it up.");
         try
         {
-            var request = new HttpRequestMessage(HttpMethod.Post, "v1/chat/completions")
+            var request = new HttpRequestMessage(HttpMethod.Post, new Uri(baseUri, "v1/chat/completions"))
             {
                 Content = new StringContent(body, Encoding.UTF8, new MediaTypeHeaderValue("application/json")),
             };
+            if (apiKey is not null) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
             var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
             if (response.IsSuccessStatusCode) return (response, null);
             var status = (int)response.StatusCode;

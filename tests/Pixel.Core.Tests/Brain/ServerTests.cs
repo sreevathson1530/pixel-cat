@@ -79,6 +79,13 @@ public class ServerOptionsTests
         Assert.Contains("\"C:\\m\\model.gguf\"", args);
         Assert.Contains("-ngl 0", args);
     }
+
+    [Fact]
+    public void Api_key_never_appears_on_the_command_line()
+    {
+        var o = new ServerOptions("llama-server.exe", "m.gguf", 17860, 8192, 4, 0, ApiKey: "s3cret");
+        Assert.DoesNotContain("s3cret", o.Arguments);
+    }
 }
 
 public class ServerManagerTests
@@ -169,6 +176,17 @@ public class ServerManagerTests
         Assert.True(m.StopIfIdle());
         Assert.True(l.Launched[0].Killed);
         Assert.Equal(ServerState.Stopped, m.State);
+    }
+
+    [Fact]
+    public async Task Current_options_track_the_live_server()
+    {
+        var (m, _, _, _) = Make();
+        Assert.Null(m.Current);
+        await m.EnsureReadyAsync(Opts, CancellationToken.None);
+        Assert.Equal(Opts, m.Current);
+        m.Stop();
+        Assert.Null(m.Current);
     }
 
     [Fact]
