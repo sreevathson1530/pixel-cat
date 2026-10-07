@@ -1,0 +1,237 @@
+namespace Pixel.Core.Motion;
+
+/// <summary>A horizontal surface the cat can stand on: a window's top edge, or the ground (Owner 0).</summary>
+public readonly record struct Platform(double Left, double Right, double Y, long Owner = 0)
+{
+    public bool Covers(double x) => x >= Left && x <= Right;
+}
+
+public readonly record struct Bounds(double Left, double Top, double Right, double Bottom);
+
+public enum Facing { Right, Left }
+
+public enum MotionMode { Idle, Walking, Airborne, Held }
+
+/// <summary>Cat position: X is the horizontal centre, Y is the bottom of the feet (DIPs, y grows down).</summary>
+public sealed class CatBody
+{
+    public double X { get; internal set; }
+    public double Y { get; internal set; }
+    public double Vx { get; internal set; }
+    public double Vy { get; internal set; }
+    public Facing Facing { get; internal set; }
+    public bool Grounded { get; internal set; }
+    public Platform? StandingOn { get; internal set; }
+}
+
+/// <summary>Walking, jumping, falling and riding windows inside the work area.</summary>
+public sealed class MotionController(Bounds area)
+{
+    public const double HalfWidth = 24;
+    public const double Gravity = 2600;
+    public const double WalkSpeed = 70;
+    public const double RunSpeed = 260;
+    public const double MaxJumpHeight = 450;
+    private const double SnapTolerance = 14;
+
+    private Bounds _area = area;
+    private double _speed = WalkSpeed;
+    private double? _leapTargetX;
+
+    public CatBody Body { get; } = new();
+    public MotionMode Mode { get; private set; } = MotionMode.Idle;
+    public double? TargetX { get; private set; }
+    public Bounds Area => _area;
+    private Platform Ground => new(_area.Left, _area.Right, _area.Bottom);
+
+    public void SetArea(Bounds area)
+    {
+        _area = area;
+        Body.X = ClampX(Body.X);
+        if (Body.Y > area.Bottom) Body.Y = area.Bottom;
+        if (Body.StandingOn is { Owner: 0 }) Unground(); // ground moved; re-land next step
+    }
+
+    public void Place(double x, double y)
+    {
+        Body.X = ClampX(x);
+        Body.Y = Math.Min(y, _area.Bottom);
+        Body.Vx = Body.Vy = 0;
+        Mode = MotionMode.Idle;
+        TargetX = null;
+        if (Math.Abs(Body.Y - _area.Bottom) < 0.5) Land(Ground);
+        else
+        {
+            Unground();
+            Mode = MotionMode.Airborne;
+        }
+    }
+
+    public void WalkTo(double x, double speed = WalkSpeed)
+    {
+        if (Mode is MotionMode.Held or MotionMode.Airborne) return;
+        TargetX = ClampX(x);
+        _speed = speed;
+        Mode = MotionMode.Walking;
+    }
+
+    public void Stop()
+    {
+        if (Mode != MotionMode.Walking) return;
+        Mode = MotionMode.Idle;
+        TargetX = null;
+    }
+
+    /// <summary>Ballistic jump that lands at <paramref name="x"/> on <paramref name="target"/>. False if out of reach.</summary>
+    public bool JumpTo(Platform target, double x) => Leap(ClampX(x), target.Y);
+
+    /// <summary>Short pounce along the current surface.</summary>
+    public bool Pounce(double x) => Leap(ClampX(x), Body.Y, apex: 70);
+
+    private bool Leap(double tx, double ty, double apex = 60)
+    {
+        if (Mode == MotionMode.Held || !Body.Grounded) return false;
+        if (Body.Y - ty > MaxJumpHeight) return false;
+
+        var apexY = Math.Min(Body.Y, ty) - apex;
+        var vy0 = -Math.Sqrt(2 * Gravity * (Body.Y - apexY));
+        var tUp = -vy0 / Gravity;
+        var tDown = Math.Sqrt(2 * (ty - apexY) / Gravity);
+        Body.Vx = (tx - Body.X) / (tUp + tDown);
+        Body.Vy = vy0;
+        Body.Facing = tx >= Body.X ? Facing.Right : Facing.Left;
+        Mode = MotionMode.Airborne;
+        TargetX = null;
+        _leapTargetX = tx;
+        Unground();
+        return true;
+    }
+
+    public void Hold(double x, double y)
+    {
+        _leapTargetX = null;
+        Mode = MotionMode.Held;
+        TargetX = null;
+        Body.X = x;
+        Body.Y = y;
+        Body.Vx = Body.Vy = 0;
+        Unground();
+    }
+
+    public void Release()
+    {
+        if (Mode != MotionMode.Held) return;
+        Body.X = ClampX(Body.X);
+        Mode = MotionMode.Airborne;
+    }
+
+    public void Step(double dt, IReadOnlyList<Platform> platforms)
+    {
+        if (Mode == MotionMode.Held) return;
+
+        if (Body.Grounded)
+        {
+            FollowSupport(platforms);
+            if (!Body.Grounded) { Mode = MotionMode.Airborne; return; }
+            if (Mode == MotionMode.Walking) Walk(dt);
+            return;
+        }
+
+        // Airborne (falling, jumping or just released).
+        Mode = MotionMode.Airborne;
+        var prevY = Body.Y;
+        Body.Vy += Gravity * dt;
+        Body.X = ClampX(Body.X + Body.Vx * dt);
+        Body.Y += Body.Vy * dt;
+        Body.Y = Math.Max(Body.Y, _area.Top + 40);
+
+        if (Body.Vy < 0) return;
+        Platform? landing = null;
+        foreach (var p in platforms.Append(Ground))
+        {
+            if (!p.Covers(Body.X) || p.Y < prevY - 0.001 || p.Y > Body.Y) continue;
+            if (landing is null || p.Y < landing.Value.Y) landing = p;
+        }
+        if (landing is { } l) Land(l);
+    }
+
+    private void Walk(double dt)
+    {
+        if (TargetX is not { } target) { Mode = MotionMode.Idle; return; }
+        var dir = Math.Sign(target - Body.X);
+        Body.Facing = dir < 0 ? Facing.Left : Facing.Right;
+        var step = _speed * dt;
+        if (Math.Abs(target - Body.X) <= step)
+        {
+            Body.X = target;
+            Mode = MotionMode.Idle;
+            TargetX = null;
+        }
+        else
+        {
+            Body.X = ClampX(Body.X + dir * step);
+        }
+
+        // Walked off the edge of a window?
+        if (Body.StandingOn is { } on && !on.Covers(Body.X))
+        {
+            Body.Vx = dir * _speed;
+            Body.Vy = 0;
+            Unground();
+            Mode = MotionMode.Airborne;
+        }
+    }
+
+    /// <summary>Keeps the cat on its window as the window moves; drops it when the window disappears.</summary>
+    private void FollowSupport(IReadOnlyList<Platform> platforms)
+    {
+        if (Body.StandingOn is not { } on) { Unground(); return; }
+        if (on.Owner == 0)
+        {
+            Body.Y = _area.Bottom;
+            Body.StandingOn = Ground;
+            return;
+        }
+
+        foreach (var p in platforms)
+        {
+            if (p.Owner != on.Owner) continue;
+            Body.X = ClampX(Body.X + (p.Left - on.Left));
+            if (!p.Covers(Body.X) || Math.Abs(p.Y - on.Y) > 200) break;
+            Body.Y = p.Y;
+            Body.StandingOn = p;
+            return;
+        }
+
+        // Same-owner platform gone: try another surface right under the feet, else fall.
+        foreach (var p in platforms.Append(Ground))
+        {
+            if (p.Covers(Body.X) && Math.Abs(p.Y - Body.Y) <= SnapTolerance)
+            {
+                Land(p);
+                return;
+            }
+        }
+        Unground();
+    }
+
+    private void Land(Platform p)
+    {
+        // Integration drifts a few pixels; finish a leap exactly where it was aimed.
+        if (_leapTargetX is { } tx && Math.Abs(tx - Body.X) < 20 && p.Covers(tx)) Body.X = tx;
+        _leapTargetX = null;
+        Body.Y = p.Y;
+        Body.Vx = Body.Vy = 0;
+        Body.Grounded = true;
+        Body.StandingOn = p;
+        Mode = MotionMode.Idle;
+    }
+
+    private void Unground()
+    {
+        Body.Grounded = false;
+        Body.StandingOn = null;
+    }
+
+    private double ClampX(double x) => Math.Clamp(x, _area.Left + HalfWidth, _area.Right - HalfWidth);
+}
