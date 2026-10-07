@@ -31,6 +31,9 @@ public sealed class PetDirector(MotionController motion, Roamer roamer)
     /// <summary>Cursor X in the same coordinates as the motion area (for hunting).</summary>
     public double CursorX { get; set; }
 
+    /// <summary>Where something needs attention (e.g. an error on screen): the cat runs there before alerting.</summary>
+    public double? AttentionX { get; set; }
+
     public void Tick(double now, double dt, PetSignals s, IReadOnlyList<Platform> platforms, double userIdleSeconds)
     {
         var activity = ResolveHunt(BehaviourSelector.Select(s), now);
@@ -57,7 +60,22 @@ public sealed class PetDirector(MotionController motion, Roamer roamer)
             _ => Roam(now, platforms, userIdleSeconds),
         };
 
-        if (activity is not (Activity.Roam or Activity.Dangle)) motion.Stop();
+        var goingToAttention = false;
+        if (activity == Activity.Alert && AttentionX is { } ax && motion.Body.Grounded)
+        {
+            if (Math.Abs(motion.Body.X - ax) > 30)
+            {
+                if (motion.Mode != MotionMode.Walking) motion.WalkTo(ax, MotionController.RunSpeed);
+                goingToAttention = true;
+                anim = AnimationId.Run;
+            }
+            else
+            {
+                AttentionX = null;
+            }
+        }
+
+        if (activity is not (Activity.Roam or Activity.Dangle) && !goingToAttention) motion.Stop();
         if (activity == Activity.Hunt && _pounceAt is { } at && now >= at)
         {
             var reach = Math.Clamp(_huntTargetX - motion.Body.X, -PounceReach, PounceReach);

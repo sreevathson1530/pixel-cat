@@ -191,3 +191,23 @@ public class PetDirectorTests
         Assert.InRange(now - d.AnimationStart, 0, 0.1);
     }
 }
+
+public class PetDirectorAttentionTests
+{
+    [Fact]
+    public void Alert_with_attention_point_walks_there_first_then_alerts()
+    {
+        var m = new MotionController(new Bounds(0, 0, 1280, 800));
+        m.Place(200, 800);
+        var d = new PetDirector(m, new Roamer(new Random(1))) { AttentionX = 900 };
+        var now = 0.0;
+        var alert = new PetSignals { Alert = true };
+
+        d.Tick(now, 1 / 30.0, alert, [], 0);
+        Assert.Equal(AnimationId.Run, d.Animation);
+
+        for (; now < 6; now += 1 / 30.0) d.Tick(now, 1 / 30.0, alert, [], 0);
+        Assert.InRange(m.Body.X, 860, 940);
+        Assert.Equal(AnimationId.Alert, d.Animation);
+    }
+}

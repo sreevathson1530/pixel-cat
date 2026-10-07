@@ -257,6 +257,7 @@
         case "avatar": $("avatar").src = m.dataUrl; break;
         case "reset": reset(); break;
         case "focus": text.focus(); break;
+        case "ask": submit(m.text || ""); break;
       }
     });
     send({ type: "ready" });

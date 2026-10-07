@@ -4,8 +4,10 @@ using System.Windows.Threading;
 using Pixel.App.Cat;
 using Pixel.App.Chat;
 using Pixel.App.Input;
+using Pixel.App.Screen;
 using Pixel.Core.Art;
 using Pixel.Core.Input;
+using Pixel.Core.Screen;
 using Pixel.Core.Storage;
 
 namespace Pixel.App.Shell;
@@ -29,6 +31,9 @@ internal sealed class AppHost : IDisposable
     public Settings Settings { get; private set; } = SettingsStore.Load(SettingsStore.DefaultPath);
     public CatController Cat { get; private set; } = null!;
     public ChatController Chat { get; private set; } = null!;
+    public ScreenWatcher Screen { get; private set; } = null!;
+    private readonly ErrorSpotter _errors = new();
+    private ErrorFinding? _finding;
     public TrayIcon Tray => _tray!;
     public bool IsVanished { get; private set; }
 
@@ -43,7 +48,16 @@ internal sealed class AppHost : IDisposable
         Cat = new CatController(Settings.Scale, Palette.Named(Settings.Palette), OwnWindows.Contains);
         Cat.Start();
         OwnWindows.Add(Cat.Handle);
-        Chat = new ChatController(this, new EchoBrain(), () => null);
+        var reader = new ScreenReader();
+        if (!reader.OcrAvailable) Log.Info("Windows OCR unavailable (no OCR language installed)");
+        Screen = new ScreenWatcher(reader, OwnWindows.Contains);
+        Screen.Updated += OnScreenUpdated;
+        Screen.Start();
+        Vanishing += Screen.Stop;
+        Revived += Screen.Start;
+
+        Chat = new ChatController(this, new EchoBrain(), Screen.CaptureNowAsync);
+        Cat.Clicked += OnCatClicked;
 
         _hooks = new HookThread(new HotkeyDetector(), OnHotkey, Cat.Post);
         _hooks.Start();
@@ -60,6 +74,30 @@ internal sealed class AppHost : IDisposable
         // Only the installed build registers itself; a dev build under bin\ never should.
         var devBuild = Environment.ProcessPath?.Contains(@"\bin\", StringComparison.OrdinalIgnoreCase) == true;
         if (!devBuild && Settings.StartWithWindows && !AutoStart.IsEnabled()) AutoStart.Set(true);
+    }
+
+    /// <summary>Worker thread: look for errors in the active window and send the cat to them.</summary>
+    private void OnScreenUpdated(ScreenSnapshot snapshot, IReadOnlyList<OcrLine> foregroundLines)
+    {
+        if (!Settings.ProactiveErrors || Chat.IsOpen) return;
+        if (_errors.Scan(snapshot, DateTimeOffset.Now) is not { } finding) return;
+        var line = foregroundLines.FirstOrDefault(l => l.Text.Trim() == finding.Line);
+        _ui.BeginInvoke(() =>
+        {
+            _finding = finding;
+            double? x = line.Text is null ? null : (line.Bounds.Left + line.Bounds.Width / 2.0) / Cat.DpiScale;
+            Cat.RaiseAlert(x);
+            Log.Info("error spotted on screen");
+        });
+    }
+
+    private void OnCatClicked()
+    {
+        if (!Cat.AlertActive || _finding is null) return;
+        var line = _finding.Line;
+        Cat.ClearAlert();
+        _finding = null;
+        _ = Chat.AskAsync($"What does this error mean, and how do I fix it?\n\n{line}");
     }
 
     public void UpdateSettings(Settings settings)
@@ -108,6 +146,7 @@ internal sealed class AppHost : IDisposable
 
     public void Dispose()
     {
+        Screen?.Dispose();
         _hooks?.Dispose();
         _tray?.Dispose();
     }

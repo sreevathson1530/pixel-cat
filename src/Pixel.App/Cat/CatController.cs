@@ -38,6 +38,7 @@ internal sealed class CatController
     private Point _pressAt;
     private Action? _onVanished;
     private bool _userStaying;
+    private double _alertUntil;
 
     public CatController(int scale, Palette palette, Func<IntPtr, bool> isOwnWindow)
     {
@@ -74,6 +75,27 @@ internal sealed class CatController
     /// <summary>Keeps the cat beside the open chat panel instead of wandering off.</summary>
     public bool HoldStill { get; set; }
     public double UserIdleSeconds => Now - _lastUserInput;
+
+    /// <summary>Physical pixels per DIP for the cat's monitor.</summary>
+    public double DpiScale => _window.Handle != IntPtr.Zero ? _window.DpiScale : 1;
+
+    /// <summary>Single click on the cat (not a drag).</summary>
+    public event Action? Clicked;
+
+    public bool AlertActive => Now < _alertUntil;
+
+    /// <summary>Shows the "!" alert; if <paramref name="atX"/> is given the cat runs there first.</summary>
+    public void RaiseAlert(double? atX, double seconds = 20)
+    {
+        _alertUntil = Now + seconds;
+        _director.AttentionX = atX;
+    }
+
+    public void ClearAlert()
+    {
+        _alertUntil = 0;
+        _director.AttentionX = null;
+    }
 
     /// <summary>Thread-safe: called from the input hook thread.</summary>
     public void Post(InputEvent e) => _input.Enqueue(e);
@@ -139,6 +161,7 @@ internal sealed class CatController
         var distance = (cursor - center).Length;
         var signals = Overlay with
         {
+            Alert = Overlay.Alert || now < _alertUntil,
             Held = _motion.Mode == MotionMode.Held,
             Overheated = _meter.IsOverheated,
             Hunting = !_dragging && HuntRule.ShouldHunt(_meter.MouseSpeed, distance),
@@ -254,6 +277,10 @@ internal sealed class CatController
         {
             _motion.Release();
             _userStaying = true; // dropped: stay here until double-clicked
+        }
+        else if (_pressed)
+        {
+            Clicked?.Invoke();
         }
         _pressed = _dragging = false;
     }

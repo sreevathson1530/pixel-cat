@@ -18,14 +18,14 @@ internal sealed class ChatController
 {
     private readonly AppHost _host;
     private readonly IBrain _brain;
-    private readonly Func<ScreenSnapshot?> _snapshot;
+    private readonly Func<Task<ScreenSnapshot?>> _snapshot;
     private readonly List<ChatMessage> _conversation = [];
     private ChatWindow? _window;
     private Task? _init;
     private CancellationTokenSource? _turn;
-    private ScreenSnapshot? _screen;
+    private Task<ScreenSnapshot?> _screen = Task.FromResult<ScreenSnapshot?>(null);
 
-    public ChatController(AppHost host, IBrain brain, Func<ScreenSnapshot?> snapshot)
+    public ChatController(AppHost host, IBrain brain, Func<Task<ScreenSnapshot?>> snapshot)
     {
         _host = host;
         _brain = brain;
@@ -51,14 +51,37 @@ internal sealed class ChatController
             Hide();
             return;
         }
-        _screen = _snapshot(); // read the screen before the panel covers it
+        _screen = SafeSnapshot(); // the panel is excluded from capture, so reading can overlap showing it
         _host.Cat.HoldStill = true;
         await EnsureWindowAsync();
         PlaceBesideCat();
         _window!.Show();
         _window.SetIdle(false);
         _window.FocusInput();
-        _window.Post(new { type = "context", text = DescribeContext(_screen) });
+        _window.Post(new { type = "status", text = "reading your screen…", busy = true });
+        var screen = await _screen;
+        _window.Post(new { type = "context", text = DescribeContext(screen) });
+        _window.Post(new { type = "status", text = "here for you", busy = false });
+    }
+
+    /// <summary>Opens the panel (if needed) and asks <paramref name="text"/> as if typed.</summary>
+    public async Task AskAsync(string text)
+    {
+        if (!IsOpen) await ToggleAsync();
+        _window!.Post(new { type = "ask", text });
+    }
+
+    private async Task<ScreenSnapshot?> SafeSnapshot()
+    {
+        try
+        {
+            return await _snapshot();
+        }
+        catch (Exception e)
+        {
+            Log.Error("screen snapshot", e);
+            return null;
+        }
     }
 
     public void Hide()
@@ -118,7 +141,7 @@ internal sealed class ChatController
             case "send":
                 var text = m.GetProperty("text").GetString() ?? "";
                 var useScreen = !m.TryGetProperty("useScreen", out var u) || u.GetBoolean();
-                _ = RunTurnAsync(text, useScreen ? _screen : null);
+                _ = RunTurnAsync(text, useScreen);
                 break;
             case "copy":
                 TrySetClipboard(m.GetProperty("text").GetString() ?? "");
@@ -131,8 +154,7 @@ internal sealed class ChatController
                 break;
             case "newChat":
                 EndConversation();
-                _screen = _snapshot();
-                _window!.Post(new { type = "context", text = DescribeContext(_screen) });
+                _screen = SafeSnapshot();
                 break;
             case "drag":
                 _window!.BeginDrag();
@@ -140,8 +162,9 @@ internal sealed class ChatController
         }
     }
 
-    private async Task RunTurnAsync(string text, ScreenSnapshot? screen)
+    private async Task RunTurnAsync(string text, bool useScreen)
     {
+        var screen = useScreen ? await _screen : null;
         _turn?.Cancel();
         var cts = _turn = new CancellationTokenSource();
         _conversation.Add(new ChatMessage(ChatRole.User, text));
