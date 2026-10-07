@@ -15,6 +15,13 @@ public sealed record Settings
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "pixel");
     public string? ModelPath { get; init; }
     public string LlamaBackend { get; init; } = "cpu";
+
+    /// <summary>CPU threads for llama-server; 0 = automatic.</summary>
+    public int LlamaThreads { get; init; }
+    public int ContextSize { get; init; } = 8192;
+
+    /// <summary>Extra llama-server flags. q8_0 KV cache halves its memory (needs flash attention).</summary>
+    public string LlamaExtraArgs { get; init; } = "-fa on -ctk q8_0 -ctv q8_0";
     public int IdleUnloadMinutes { get; init; } = 10;
     public int WaterReminderMinutes { get; init; } = 60;
     public int StretchReminderMinutes { get; init; } = 45;

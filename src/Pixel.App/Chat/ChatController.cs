@@ -17,18 +17,19 @@ namespace Pixel.App.Chat;
 internal sealed class ChatController
 {
     private readonly AppHost _host;
-    private readonly IBrain _brain;
+    private IBrain _brain = new EchoBrain();
     private readonly Func<Task<ScreenSnapshot?>> _snapshot;
     private readonly List<ChatMessage> _conversation = [];
     private ChatWindow? _window;
     private Task? _init;
     private CancellationTokenSource? _turn;
     private Task<ScreenSnapshot?> _screen = Task.FromResult<ScreenSnapshot?>(null);
+    private readonly Dictionary<string, TaskCompletionSource<bool>> _pendingConfirms = [];
+    private int _confirmSeq;
 
-    public ChatController(AppHost host, IBrain brain, Func<Task<ScreenSnapshot?>> snapshot)
+    public ChatController(AppHost host, Func<Task<ScreenSnapshot?>> snapshot)
     {
         _host = host;
-        _brain = brain;
         _snapshot = snapshot;
         host.ChatToggled += () => _ = ToggleAsync();
         host.Vanishing += () =>
@@ -40,6 +41,21 @@ internal sealed class ChatController
     }
 
     public bool IsOpen => _window?.IsVisible == true;
+
+    public void UseBrain(IBrain brain) => _brain = brain;
+
+    /// <summary>Shows a Yes/No card in the chat and waits for the answer (false if the chat closes).</summary>
+    public async Task<bool> ConfirmAsync(string title, string detail)
+    {
+        if (_window is null) return false;
+        var id = $"confirm-{++_confirmSeq}";
+        var tcs = new TaskCompletionSource<bool>();
+        _pendingConfirms[id] = tcs;
+        _window.Post(new { type = "action", id, title, detail, needsConfirm = true });
+        var ok = await tcs.Task;
+        _window.Post(new { type = "actionResult", id, ok, text = ok ? "Okay!" : "Skipped." });
+        return ok;
+    }
 
     /// <summary>Raised when a conversation ends (vanish, revive, "new chat") with its messages.</summary>
     public event Action<IReadOnlyList<ChatMessage>>? ConversationEnded;
@@ -95,6 +111,8 @@ internal sealed class ChatController
     private void EndConversation()
     {
         _turn?.Cancel();
+        foreach (var p in _pendingConfirms.Values) p.TrySetResult(false);
+        _pendingConfirms.Clear();
         if (_conversation.Count > 0) ConversationEnded?.Invoke(_conversation.ToArray());
         _conversation.Clear();
         _window?.Post(new { type = "reset" });
@@ -159,12 +177,18 @@ internal sealed class ChatController
             case "drag":
                 _window!.BeginDrag();
                 break;
+            case "confirm":
+                var cid = m.GetProperty("id").GetString() ?? "";
+                if (_pendingConfirms.Remove(cid, out var pending)) pending.TrySetResult(m.GetProperty("ok").GetBoolean());
+                break;
         }
     }
 
     private async Task RunTurnAsync(string text, bool useScreen)
     {
         var screen = useScreen ? await _screen : null;
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        double? firstToken = null;
         _turn?.Cancel();
         var cts = _turn = new CancellationTokenSource();
         _conversation.Add(new ChatMessage(ChatRole.User, text));
@@ -180,7 +204,11 @@ internal sealed class ChatController
                         _window!.Post(new { type = "status", text = s.Text, busy = s.Busy });
                         break;
                     case TokenEvent t:
-                        if (answer.Length == 0) SetCatChat(ChatState.Talking);
+                        if (answer.Length == 0)
+                        {
+                            SetCatChat(ChatState.Talking);
+                            firstToken = watch.Elapsed.TotalSeconds;
+                        }
                         answer.Append(t.Text);
                         _window!.Post(new { type = "token", text = t.Text });
                         break;
@@ -203,6 +231,7 @@ internal sealed class ChatController
         finally
         {
             if (answer.Length > 0) _conversation.Add(new ChatMessage(ChatRole.Assistant, answer.ToString()));
+            Log.Info($"turn: screen={(screen is null ? "off" : "on")} first token {firstToken:0.0}s, total {watch.Elapsed.TotalSeconds:0.0}s, {answer.Length} chars");
             if (ReferenceEquals(_turn, cts)) SetCatChat(ChatState.None);
             _window?.Post(new { type = "status", text = "here for you", busy = false });
         }

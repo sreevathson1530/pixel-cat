@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Windows;
 using System.Windows.Threading;
+using Pixel.App.Brain;
 using Pixel.App.Cat;
 using Pixel.App.Chat;
 using Pixel.App.Input;
@@ -32,6 +33,7 @@ internal sealed class AppHost : IDisposable
     public CatController Cat { get; private set; } = null!;
     public ChatController Chat { get; private set; } = null!;
     public ScreenWatcher Screen { get; private set; } = null!;
+    public BrainService Brain { get; private set; } = null!;
     private readonly ErrorSpotter _errors = new();
     private ErrorFinding? _finding;
     public TrayIcon Tray => _tray!;
@@ -56,7 +58,10 @@ internal sealed class AppHost : IDisposable
         Vanishing += Screen.Stop;
         Revived += Screen.Start;
 
-        Chat = new ChatController(this, new EchoBrain(), Screen.CaptureNowAsync);
+        Chat = new ChatController(this, Screen.CaptureNowAsync);
+        Brain = new BrainService(() => Settings, msg => Chat.ConfirmAsync("Load my brain anyway?", msg), []);
+        if (Environment.GetEnvironmentVariable("PIXEL_FAKE_BRAIN") != "1") Chat.UseBrain(Brain.Brain);
+        Vanishing += Brain.Unload;
         Cat.Clicked += OnCatClicked;
 
         _hooks = new HookThread(new HotkeyDetector(), OnHotkey, Cat.Post);
@@ -147,6 +152,7 @@ internal sealed class AppHost : IDisposable
     public void Dispose()
     {
         Screen?.Dispose();
+        Brain?.Dispose();
         _hooks?.Dispose();
         _tray?.Dispose();
     }
