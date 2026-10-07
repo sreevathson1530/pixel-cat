@@ -22,7 +22,7 @@ questions about anything — including what is currently on screen — using a f
 - Commit memory is frequently exhausted on this PC when many apps are open.
 - Model file: `C:\Users\sreev\OneDrive\Documents\pixel\*.gguf` (Q4_K_M, ~8.99 GB).
 - The model is **text-only** → screen understanding is via OCR text, not images.
-- Installed: .NET 8 Desktop runtime (SDK must be installed), WebView2 runtime, Python 3.11, Node 24.
+- Installed: .NET 8 Desktop runtime only. Build targets .NET 10 LTS (.NET 8 support ends Nov 2026); SDK installed user-locally, app published self-contained, WebView2 runtime, Python 3.11, Node 24.
 
 ### Out of scope (v1)
 Voice input/output, image understanding (photos/diagrams), multi-monitor-specific behaviour,
@@ -32,7 +32,7 @@ cloud models, running terminal commands or editing files, mobile/other OS.
 
 Two processes:
 
-1. **`Pixel.exe`** — .NET 8 WPF app (per-monitor-DPI-aware v2, single instance, starts with
+1. **`Pixel.exe`** — .NET 10 WPF app (per-monitor-DPI-aware v2, single instance, starts with
    Windows, system-tray icon). Hosts the cat window, the chat panel (WebView2), settings and
    history windows, and all modules below.
 2. **`llama-server.exe`** — llama.cpp server, spawned and killed by Pixel. Bound to
