@@ -13,12 +13,21 @@ public class PromptBuilderTests
         new(Now, title, "Code", fg, other);
 
     [Fact]
-    public void Starts_with_persona_system_message_including_date()
+    public void Starts_with_a_stable_persona_system_message()
+    {
+        var a = PromptBuilder.Build([U("hi")], null, Now);
+        var b = PromptBuilder.Build([U("hi")], null, Now.AddHours(3));
+        Assert.Equal(ChatRole.System, a[0].Role);
+        Assert.Contains("Pixel", a[0].Content);
+        Assert.Equal(a[0].Content, b[0].Content); // identical prefix → llama-server reuses its cache
+    }
+
+    [Fact]
+    public void Current_time_rides_on_the_latest_question()
     {
         var msgs = PromptBuilder.Build([U("hi")], null, Now);
-        Assert.Equal(ChatRole.System, msgs[0].Role);
-        Assert.Contains("Pixel", msgs[0].Content);
-        Assert.Contains("7 October 2026", msgs[0].Content);
+        Assert.Contains("7 October 2026", msgs[^1].Content);
+        Assert.EndsWith("hi", msgs[^1].Content);
     }
 
     [Fact]
@@ -36,7 +45,7 @@ public class PromptBuilderTests
     public void Without_screen_there_is_no_screen_block()
     {
         var msgs = PromptBuilder.Build([U("hello")], null, Now);
-        Assert.Equal("hello", msgs[^1].Content);
+        Assert.DoesNotContain("<screen>", msgs[^1].Content);
     }
 
     [Fact]
@@ -68,7 +77,7 @@ public class PromptBuilderTests
         var msgs = PromptBuilder.Build(convo, null, Now);
 
         Assert.True(msgs.Sum(m => m.Content.Length) <= PromptBuilder.MaxPromptChars);
-        Assert.Equal("latest question", msgs[^1].Content);
+        Assert.EndsWith("latest question", msgs[^1].Content);
         Assert.DoesNotContain(msgs, m => m.Content.StartsWith("question 0 "));
         Assert.Equal(ChatRole.User, msgs[1].Role); // history still starts on a user turn
     }

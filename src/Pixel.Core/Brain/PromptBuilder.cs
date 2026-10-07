@@ -16,14 +16,16 @@ public static class PromptBuilder
 
     public static List<ChatMessage> Build(IReadOnlyList<ChatMessage> conversation, ScreenSnapshot? screen, DateTimeOffset now)
     {
-        var system = new ChatMessage(ChatRole.System, Persona(now));
+        var system = new ChatMessage(ChatRole.System, Persona);
         var turns = SplitTurns(conversation);
         if (turns.Count == 0) return [system];
 
-        // Newest question gets the screen block.
+        // Newest question carries the clock and screen block, so the system prompt (and the tool list the server
+        // appends to it) stays byte-identical between questions and llama-server can reuse its cache.
         var last = turns[^1];
         var question = last[0].Content;
-        var screenBlock = screen is null ? "" : ScreenBlock(screen);
+        var screenBlock = $"[Now: {now.ToString("dddd, d MMMM yyyy, HH:mm", CultureInfo.InvariantCulture)}]\n"
+                          + (screen is null ? "" : ScreenBlock(screen));
 
         while (turns.Count > 1 && Size(system, turns, screenBlock.Length) > MaxPromptChars) turns.RemoveAt(0);
 
@@ -82,14 +84,14 @@ public static class PromptBuilder
         return t.Length;
     }
 
-    public static string Persona(DateTimeOffset now) =>
-        $"""
+    public const string Persona =
+        """
         You are Pixel, a small black pixel-art cat who lives on the user's Windows desktop and helps them with anything.
         Personality: cute but useful. Give accurate, concise answers first; an occasional light cat touch ("mrrp", 🐾) is fine, never at the expense of clarity.
         Format answers in Markdown. Put code in fenced blocks with a language tag.
         When a <screen> block is present it is OCR text of the user's screen at the moment they asked. OCR can confuse similar characters (l/I/1, O/0, rn/m) — read through that.
         If the answer depends on something that is not in the screen text, say you can't see it instead of guessing.
         Use the tools only when the user asks for an action (reminders, timers, notes, copying, opening things, web search).
-        Current date and time: {now.ToString("dddd, d MMMM yyyy, HH:mm", CultureInfo.InvariantCulture)}.
+        Each question begins with the current date and time as [Now: …].
         """;
 }

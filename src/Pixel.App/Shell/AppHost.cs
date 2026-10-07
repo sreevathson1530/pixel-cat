@@ -6,10 +6,12 @@ using Pixel.App.Cat;
 using Pixel.App.Chat;
 using Pixel.App.Input;
 using Pixel.App.Screen;
+using Pixel.App.Tools;
 using Pixel.Core.Art;
 using Pixel.Core.Input;
 using Pixel.Core.Screen;
 using Pixel.Core.Storage;
+using Pixel.Core.Tools;
 
 namespace Pixel.App.Shell;
 
@@ -34,6 +36,7 @@ internal sealed class AppHost : IDisposable
     public ChatController Chat { get; private set; } = null!;
     public ScreenWatcher Screen { get; private set; } = null!;
     public BrainService Brain { get; private set; } = null!;
+    public IProductivity Productivity { get; set; } = new NoProductivity();
     private readonly ErrorSpotter _errors = new();
     private ErrorFinding? _finding;
     public TrayIcon Tray => _tray!;
@@ -58,8 +61,8 @@ internal sealed class AppHost : IDisposable
         Vanishing += Screen.Stop;
         Revived += Screen.Start;
 
-        Chat = new ChatController(this, Screen.CaptureNowAsync);
-        Brain = new BrainService(() => Settings, msg => Chat.ConfirmAsync("Load my brain anyway?", msg), []);
+        Chat = new ChatController(this, Screen.CaptureNowAsync, new ToolExecutor(() => Productivity));
+        Brain = new BrainService(() => Settings, msg => Chat.ConfirmAsync("Load my brain anyway?", msg), ToolDefinitions.All);
         if (Environment.GetEnvironmentVariable("PIXEL_FAKE_BRAIN") != "1") Chat.UseBrain(Brain.Brain);
         Vanishing += Brain.Unload;
         Cat.Clicked += OnCatClicked;

@@ -3,10 +3,12 @@ using System.IO;
 using System.Text.Json;
 using System.Windows;
 using Pixel.App.Shell;
+using Pixel.App.Tools;
 using Pixel.Core.Art;
 using Pixel.Core.Behaviour;
 using Pixel.Core.Brain;
 using Pixel.Core.Screen;
+using Pixel.Core.Tools;
 
 namespace Pixel.App.Chat;
 
@@ -27,10 +29,14 @@ internal sealed class ChatController
     private readonly Dictionary<string, TaskCompletionSource<bool>> _pendingConfirms = [];
     private int _confirmSeq;
 
-    public ChatController(AppHost host, Func<Task<ScreenSnapshot?>> snapshot)
+    private const int MaxToolRounds = 3;
+    private readonly ToolExecutor _tools;
+
+    public ChatController(AppHost host, Func<Task<ScreenSnapshot?>> snapshot, ToolExecutor tools)
     {
         _host = host;
         _snapshot = snapshot;
+        _tools = tools;
         host.ChatToggled += () => _ = ToggleAsync();
         host.Vanishing += () =>
         {
@@ -47,14 +53,44 @@ internal sealed class ChatController
     /// <summary>Shows a Yes/No card in the chat and waits for the answer (false if the chat closes).</summary>
     public async Task<bool> ConfirmAsync(string title, string detail)
     {
-        if (_window is null) return false;
-        var id = $"confirm-{++_confirmSeq}";
+        var (id, answer) = ShowAction(title, detail, needsConfirm: true);
+        var ok = await answer;
+        _window?.Post(new { type = "actionResult", id, ok, text = ok ? "Okay!" : "Skipped." });
+        return ok;
+    }
+
+    /// <summary>Adds an action card; with <paramref name="needsConfirm"/> the task completes on Yes/No.</summary>
+    private (string Id, Task<bool> Answer) ShowAction(string title, string detail, bool needsConfirm)
+    {
+        var id = $"action-{++_confirmSeq}";
+        if (_window is null) return (id, Task.FromResult(false));
+        _window.Post(new { type = "action", id, title, detail, needsConfirm });
+        if (!needsConfirm) return (id, Task.FromResult(true));
         var tcs = new TaskCompletionSource<bool>();
         _pendingConfirms[id] = tcs;
-        _window.Post(new { type = "action", id, title, detail, needsConfirm = true });
-        var ok = await tcs.Task;
-        _window.Post(new { type = "actionResult", id, ok, text = ok ? "Okay!" : "Skipped." });
-        return ok;
+        return (id, tcs.Task);
+    }
+
+    /// <summary>Validates, confirms (when needed) and runs one tool call; returns the result text for the model.</summary>
+    private async Task<string> RunToolAsync(ToolInvocation call)
+    {
+        var request = ToolArgs.Parse(call, p => File.Exists(p) || Directory.Exists(p));
+        var (title, detail) = request.Describe();
+        var (id, answer) = ShowAction(title, detail, needsConfirm: request is not ToolRequest.Invalid && ToolPolicy.RequiresConfirmation(call.Name));
+        if (request is ToolRequest.Invalid invalid)
+        {
+            _window?.Post(new { type = "actionResult", id, ok = false, text = invalid.Error });
+            return invalid.Error;
+        }
+        if (!await answer)
+        {
+            _window?.Post(new { type = "actionResult", id, ok = false, text = "Skipped." });
+            return "The user declined this action.";
+        }
+        var (ok, text) = _tools.Execute(request);
+        _window?.Post(new { type = "actionResult", id, ok, text });
+        Log.Info($"tool {call.Name}: {(ok ? "ok" : "failed")}");
+        return text;
     }
 
     /// <summary>Raised when a conversation ends (vanish, revive, "new chat") with its messages.</summary>
@@ -196,26 +232,47 @@ internal sealed class ChatController
         var answer = new System.Text.StringBuilder();
         try
         {
-            await foreach (var ev in _brain.AskAsync(_conversation, screen, cts.Token))
+            // The model may call tools; run them and let it continue (at most a few rounds).
+            for (var round = 0; round < MaxToolRounds; round++)
             {
-                switch (ev)
+                var calls = new List<ToolInvocation>();
+                var roundText = new System.Text.StringBuilder();
+                await foreach (var ev in _brain.AskAsync(_conversation, screen, cts.Token))
                 {
-                    case StatusEvent s:
-                        _window!.Post(new { type = "status", text = s.Text, busy = s.Busy });
-                        break;
-                    case TokenEvent t:
-                        if (answer.Length == 0)
-                        {
-                            SetCatChat(ChatState.Talking);
-                            firstToken = watch.Elapsed.TotalSeconds;
-                        }
-                        answer.Append(t.Text);
-                        _window!.Post(new { type = "token", text = t.Text });
-                        break;
-                    case ErrorEvent e:
-                        _window!.Post(new { type = "error", text = e.Message });
-                        return;
+                    switch (ev)
+                    {
+                        case StatusEvent s:
+                            _window!.Post(new { type = "status", text = s.Text, busy = s.Busy });
+                            break;
+                        case TokenEvent t:
+                            if (answer.Length == 0)
+                            {
+                                SetCatChat(ChatState.Talking);
+                                firstToken = watch.Elapsed.TotalSeconds;
+                            }
+                            answer.Append(t.Text);
+                            roundText.Append(t.Text);
+                            _window!.Post(new { type = "token", text = t.Text });
+                            break;
+                        case ToolCallEvent c:
+                            calls.Add(c.Call);
+                            break;
+                        case ErrorEvent e:
+                            _window!.Post(new { type = "error", text = e.Message });
+                            return;
+                    }
                 }
+
+                if (calls.Count == 0)
+                {
+                    if (roundText.Length > 0) _conversation.Add(new ChatMessage(ChatRole.Assistant, roundText.ToString()));
+                    break;
+                }
+
+                _conversation.Add(new ChatMessage(ChatRole.Assistant, roundText.ToString(), ToolCalls: calls));
+                foreach (var call in calls)
+                    _conversation.Add(new ChatMessage(ChatRole.Tool, await RunToolAsync(call), ToolCallId: call.Id));
+                SetCatChat(ChatState.Thinking);
             }
             _window!.Post(new { type = "done" });
         }
@@ -230,7 +287,6 @@ internal sealed class ChatController
         }
         finally
         {
-            if (answer.Length > 0) _conversation.Add(new ChatMessage(ChatRole.Assistant, answer.ToString()));
             Log.Info($"turn: screen={(screen is null ? "off" : "on")} first token {firstToken:0.0}s, total {watch.Elapsed.TotalSeconds:0.0}s, {answer.Length} chars");
             if (ReferenceEquals(_turn, cts)) SetCatChat(ChatState.None);
             _window?.Post(new { type = "status", text = "here for you", busy = false });
