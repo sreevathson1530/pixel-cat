@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Windows;
 using System.Windows.Threading;
 using Pixel.App.Cat;
+using Pixel.App.Chat;
 using Pixel.App.Input;
 using Pixel.Core.Art;
 using Pixel.Core.Input;
@@ -27,6 +28,7 @@ internal sealed class AppHost : IDisposable
 
     public Settings Settings { get; private set; } = SettingsStore.Load(SettingsStore.DefaultPath);
     public CatController Cat { get; private set; } = null!;
+    public ChatController Chat { get; private set; } = null!;
     public TrayIcon Tray => _tray!;
     public bool IsVanished { get; private set; }
 
@@ -41,6 +43,7 @@ internal sealed class AppHost : IDisposable
         Cat = new CatController(Settings.Scale, Palette.Named(Settings.Palette), OwnWindows.Contains);
         Cat.Start();
         OwnWindows.Add(Cat.Handle);
+        Chat = new ChatController(this, new EchoBrain(), () => null);
 
         _hooks = new HookThread(new HotkeyDetector(), OnHotkey, Cat.Post);
         _hooks.Start();

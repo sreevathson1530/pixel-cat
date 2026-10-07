@@ -37,6 +37,7 @@ internal sealed class CatController
     private bool _pressed, _dragging;
     private Point _pressAt;
     private Action? _onVanished;
+    private bool _userStaying;
 
     public CatController(int scale, Palette palette, Func<IntPtr, bool> isOwnWindow)
     {
@@ -67,7 +68,11 @@ internal sealed class CatController
     /// <summary>Cat feet position and size in DIPs, for placing the chat panel and bubbles.</summary>
     public Rect Bounds => new(_window.Left, _window.Top, _window.Width, _window.Height);
 
-    public bool Staying => _director.Staying;
+    /// <summary>User dropped the cat somewhere (stays until double-clicked).</summary>
+    public bool Staying => _userStaying;
+
+    /// <summary>Keeps the cat beside the open chat panel instead of wandering off.</summary>
+    public bool HoldStill { get; set; }
     public double UserIdleSeconds => Now - _lastUserInput;
 
     /// <summary>Thread-safe: called from the input hook thread.</summary>
@@ -102,7 +107,7 @@ internal sealed class CatController
 
     public void ToggleStay()
     {
-        _director.Staying = !_director.Staying;
+        _userStaying = !_userStaying;
     }
 
     private void Tick()
@@ -143,6 +148,7 @@ internal sealed class CatController
         };
 
         _director.CursorX = cursor.X;
+        _director.Staying = _userStaying || HoldStill;
         _director.Tick(now, dt, signals, _platforms, UserIdleSeconds);
         FinishPoof(now);
         Draw(now, cursor);
@@ -226,7 +232,7 @@ internal sealed class CatController
     {
         if (e.ClickCount == 2)
         {
-            _director.Staying = false; // double-click: back to roaming
+            _userStaying = false; // double-click: back to roaming
             return;
         }
         _pressed = true;
@@ -247,7 +253,7 @@ internal sealed class CatController
         if (_dragging)
         {
             _motion.Release();
-            _director.Staying = true; // dropped: stay here until double-clicked
+            _userStaying = true; // dropped: stay here until double-clicked
         }
         _pressed = _dragging = false;
     }

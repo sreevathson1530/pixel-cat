@@ -163,6 +163,47 @@ internal static partial class Win32
         SetWindowLongPtr(hwnd, GWL_EXSTYLE, new IntPtr(ex | flags));
     }
 
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool SetForegroundWindow(IntPtr hwnd);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool AttachThreadInput(uint attach, uint attachTo, [MarshalAs(UnmanagedType.Bool)] bool doAttach);
+
+    [LibraryImport("kernel32.dll")]
+    public static partial uint GetCurrentThreadId();
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool ReleaseCapture();
+
+    [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
+    public static partial IntPtr SendMessage(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    /// <summary>
+    /// Brings our window to the front even though another app has focus: Windows only lets the foreground
+    /// thread hand over focus, so briefly attach to its input queue.
+    /// </summary>
+    public static void ForceForeground(IntPtr hwnd)
+    {
+        var fg = GetForegroundWindow();
+        if (fg == hwnd) return;
+        var fgThread = GetWindowThreadProcessId(fg, out _);
+        var me = GetCurrentThreadId();
+        var attached = fgThread != me && AttachThreadInput(me, fgThread, true);
+        SetForegroundWindow(hwnd);
+        if (attached) AttachThreadInput(me, fgThread, false);
+    }
+
+    /// <summary>Starts a native title-bar drag of the window (used by the chat header).</summary>
+    public static void BeginCaptionDrag(IntPtr hwnd)
+    {
+        const uint WM_NCLBUTTONDOWN = 0xA1;
+        ReleaseCapture();
+        SendMessage(hwnd, WM_NCLBUTTONDOWN, new IntPtr(2), IntPtr.Zero); // HTCAPTION
+    }
+
     public static void KeepTopmost(IntPtr hwnd) =>
         SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 }
