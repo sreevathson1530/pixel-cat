@@ -79,19 +79,14 @@ internal sealed class ChatController
     private async Task<string> RunToolAsync(ToolInvocation call)
     {
         var request = ToolArgs.Parse(call, p => File.Exists(p) || Directory.Exists(p));
-        var (title, detail) = request.Describe();
-        var (id, answer) = ShowAction(title, detail, needsConfirm: request is not ToolRequest.Invalid && ToolPolicy.RequiresConfirmation(call.Name));
-        if (request is ToolRequest.Invalid invalid)
-        {
-            _window?.Post(new { type = "actionResult", id, ok = false, text = invalid.Error });
-            return invalid.Error;
-        }
+        var action = _tools.Prepare(call.Name, request); // refused actions skip confirmation and report why
+        var (id, answer) = ShowAction(action.Title, action.Detail, action.NeedsConfirm);
         if (!await answer)
         {
             _window?.Post(new { type = "actionResult", id, ok = false, text = "Skipped." });
             return "The user declined this action.";
         }
-        var (ok, text) = _tools.Execute(request);
+        var (ok, text) = action.Run();
         _window?.Post(new { type = "actionResult", id, ok, text });
         Log.Info($"tool {call.Name}: {(ok ? "ok" : "failed")}");
         return text;

@@ -1,15 +1,49 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Net;
 using System.Windows;
 using Pixel.App.Shell;
 using Pixel.Core.Tools;
 
 namespace Pixel.App.Tools;
 
+/// <summary>
+/// An action ready to show and run. What the card displays and what <see cref="Run"/> does come from the same
+/// resolution, so the user approves exactly what will happen.
+/// </summary>
+internal sealed record PreparedAction(string Title, string Detail, bool NeedsConfirm, Func<(bool Ok, string Text)> Run)
+{
+    public static PreparedAction Refused(string title, string reason) => new(title, reason, false, () => (false, reason));
+}
+
 /// <summary>Carries out validated (and, where needed, user-confirmed) tool requests.</summary>
 internal sealed class ToolExecutor(Func<IProductivity> productivity)
 {
-    public (bool Ok, string Text) Execute(ToolRequest request)
+    public PreparedAction Prepare(string toolName, ToolRequest request)
+    {
+        var (title, detail) = request.Describe();
+        var confirm = ToolPolicy.RequiresConfirmation(toolName);
+        switch (request)
+        {
+            case ToolRequest.Invalid i:
+                return PreparedAction.Refused(title, i.Error);
+            case ToolRequest.OpenApp a:
+            {
+                if (AppResolver.Resolve(a.Name) is not { } app)
+                    return PreparedAction.Refused("Open app", $"I couldn't find an installed app called \"{a.Name}\".");
+                return new PreparedAction("Open app", app.Describe(), confirm, () => Open(app.LaunchPath, $"Opened {app.Name}."));
+            }
+            case ToolRequest.OpenUrl u:
+                // Re-check with DNS now: a public-looking name can point back at this PC (localtest.me, nip.io…).
+                if (!UrlSafety.TryCheck(u.Url.AbsoluteUri, out var url, out var error, Dns.GetHostAddresses))
+                    return PreparedAction.Refused("Open link", error!);
+                return new PreparedAction(title, UrlSafety.Display(url!), confirm, () => Open(url!.AbsoluteUri, "Opened the link."));
+            default:
+                return new PreparedAction(title, detail, confirm, () => Execute(request));
+        }
+    }
+
+    private (bool Ok, string Text) Execute(ToolRequest request)
     {
         try
         {
@@ -20,13 +54,8 @@ internal sealed class ToolExecutor(Func<IProductivity> productivity)
                 ToolRequest.StopPomodoro => (true, productivity().StopPomodoro()),
                 ToolRequest.AddNote n => (true, productivity().AddNote(n.Text, n.Pinned)),
                 ToolRequest.CopyToClipboard c => Copy(c.Text),
-                ToolRequest.OpenUrl u => Open(u.Url.AbsoluteUri, "Opened the link."),
                 ToolRequest.WebSearch w => Open(w.Url.AbsoluteUri, $"Searched the web for \"{w.Query}\"."),
                 ToolRequest.OpenFile f => Open(f.Path, "Opened it."),
-                ToolRequest.OpenApp a => AppResolver.Resolve(a.Name) is { } target
-                    ? Open(target, $"Opened {a.Name}.")
-                    : (false, $"I couldn't find an installed app called \"{a.Name}\"."),
-                ToolRequest.Invalid i => (false, i.Error),
                 _ => (false, "I can't do that one."),
             };
         }
