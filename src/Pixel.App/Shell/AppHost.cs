@@ -9,6 +9,7 @@ using Pixel.App.History;
 using Pixel.App.Input;
 using Pixel.App.Reminders;
 using Pixel.App.Screen;
+using Pixel.App.Preferences;
 using Pixel.App.Tools;
 using Pixel.Core.Art;
 using Pixel.Core.Input;
@@ -42,6 +43,9 @@ internal sealed class AppHost : IDisposable
     public IProductivity Productivity { get; set; } = new NoProductivity();
     public ReminderService? Reminders { get; private set; }
     public AgentWatchService? Agents { get; private set; }
+    public SoundService? Sounds { get; private set; }
+    private FocusWatcher? _focus;
+    private SettingsWindow? _settingsWindow;
     public Dispatcher Dispatcher => _ui;
     private NotesWindow? _notesWindow;
     public HistoryStore? History { get; private set; }
@@ -97,6 +101,10 @@ internal sealed class AppHost : IDisposable
         Agents = new AgentWatchService(this);
         _tray.ConnectClaude += () => Agents.ConnectClaudeCode();
 
+        Sounds = new SoundService(this);
+        _focus = new FocusWatcher(this);
+        _tray.OpenSettings += ShowSettings;
+
         // Only the installed build registers itself; a dev build under bin\ never should.
         var devBuild = Environment.ProcessPath?.Contains(@"\bin\", StringComparison.OrdinalIgnoreCase) == true;
         if (!devBuild && Settings.StartWithWindows && !AutoStart.IsEnabled()) AutoStart.Set(true);
@@ -137,6 +145,19 @@ internal sealed class AppHost : IDisposable
             Log.Error("history database unavailable", e);
             return null;
         }
+    }
+
+    private void ShowSettings()
+    {
+        if (_settingsWindow is { IsLoaded: true })
+        {
+            _settingsWindow.Activate();
+            return;
+        }
+        _settingsWindow = new SettingsWindow(this);
+        _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+        _settingsWindow.Show();
+        _settingsWindow.Activate();
     }
 
     private void ShowNotes()

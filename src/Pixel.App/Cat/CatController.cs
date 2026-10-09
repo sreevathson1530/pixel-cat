@@ -6,6 +6,7 @@ using System.Windows.Threading;
 using Pixel.App.Native;
 using Pixel.Core.Art;
 using Pixel.Core.Behaviour;
+using Activity = Pixel.Core.Behaviour.Activity;
 using Pixel.Core.Input;
 using Pixel.Core.Motion;
 
@@ -81,6 +82,9 @@ internal sealed class CatController
 
     /// <summary>Single click on the cat (not a drag).</summary>
     public event Action? Clicked;
+
+    /// <summary>The cat switched what it is doing (used for sounds).</summary>
+    public event Action<Activity>? ActivityChanged;
 
     public bool AlertActive => Now < _alertUntil;
 
@@ -172,7 +176,9 @@ internal sealed class CatController
 
         _director.CursorX = cursor.X;
         _director.Staying = _userStaying || HoldStill;
+        var before = _director.Activity;
         _director.Tick(now, dt, signals, _platforms, UserIdleSeconds);
+        if (_director.Activity != before) ActivityChanged?.Invoke(_director.Activity);
         FinishPoof(now);
         Draw(now, cursor);
         Place();
@@ -217,6 +223,13 @@ internal sealed class CatController
     {
         var left = Math.Round(_motion.Body.X - _window.Width / 2);
         var top = Math.Round(_motion.Body.Y - _window.Height);
+        if (Overlay.FocusMode)
+        {
+            // Full-screen app: tuck into the bottom-right corner and just peek over the edge.
+            var area = SystemParameters.WorkArea;
+            left = Math.Round(area.Right - _window.Width * 0.62);
+            top = Math.Round(area.Bottom - _window.Height);
+        }
         if (_window.Left != left) _window.Left = left;
         if (_window.Top != top) _window.Top = top;
     }
