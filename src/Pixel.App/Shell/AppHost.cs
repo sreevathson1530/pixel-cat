@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Windows;
 using System.Windows.Threading;
+using Pixel.App.Agents;
 using Pixel.App.Brain;
 using Pixel.App.Cat;
 using Pixel.App.Chat;
@@ -40,6 +41,8 @@ internal sealed class AppHost : IDisposable
     public BrainService Brain { get; private set; } = null!;
     public IProductivity Productivity { get; set; } = new NoProductivity();
     public ReminderService? Reminders { get; private set; }
+    public AgentWatchService? Agents { get; private set; }
+    public Dispatcher Dispatcher => _ui;
     private NotesWindow? _notesWindow;
     public HistoryStore? History { get; private set; }
     private HistoryWindow? _historyWindow;
@@ -90,6 +93,9 @@ internal sealed class AppHost : IDisposable
         Reminders = new ReminderService(this);
         Productivity = Reminders;
         _tray.OpenNotes += ShowNotes;
+
+        Agents = new AgentWatchService(this);
+        _tray.ConnectClaude += () => Agents.ConnectClaudeCode();
 
         // Only the installed build registers itself; a dev build under bin\ never should.
         var devBuild = Environment.ProcessPath?.Contains(@"\bin\", StringComparison.OrdinalIgnoreCase) == true;
@@ -212,6 +218,7 @@ internal sealed class AppHost : IDisposable
         Brain?.Dispose();
         History?.Dispose();
         Reminders?.Dispose();
+        Agents?.Dispose();
         _hooks?.Dispose();
         _tray?.Dispose();
     }
