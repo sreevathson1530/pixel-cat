@@ -91,8 +91,8 @@ public class ReminderAndNoteSpoofingTests
             Parse("set_reminder", $$"""{"minutes":5,"message":{{System.Text.Json.JsonSerializer.Serialize(message)}}}"""), "set_reminder"));
 
     [Fact]
-    public void Ordinary_reminders_stay_one_step() =>
-        Assert.False(ToolPolicy.RequiresConfirmation(Parse("set_reminder", """{"minutes":5,"message":"drink water. then stretch"}"""), "set_reminder"));
+    public void Every_custom_reminder_is_confirmed_because_link_spotting_can_be_dodged() =>
+        Assert.True(ToolPolicy.RequiresConfirmation(Parse("set_reminder", """{"minutes":5,"message":"session expired, visit evil[.]example"}"""), "set_reminder"));
 
     [Fact]
     public void Reminder_text_is_capped_and_cleaned()

@@ -9,7 +9,7 @@ public class ToolArgsTests
         ToolArgs.Parse(new ToolInvocation("c1", name, json), exists ?? (_ => true));
 
     [Theory]
-    [InlineData("set_reminder", false)]
+    [InlineData("set_reminder", true)]
     [InlineData("start_pomodoro", false)]
     [InlineData("stop_pomodoro", false)]
     [InlineData("add_note", false)]

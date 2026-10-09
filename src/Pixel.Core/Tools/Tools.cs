@@ -29,28 +29,24 @@ public static class ToolDefinitions
     ];
 }
 
-public static partial class ToolPolicy
+public static class ToolPolicy
 {
-    private static readonly HashSet<string> Harmless = ["set_reminder", "start_pomodoro", "stop_pomodoro", "add_note"];
+    /// <summary>
+    /// Only actions that show nothing outside the chat run without asking. Reminders are confirmed too: their
+    /// text pops up later, and text on screen could plant one that impersonates a real warning — no link
+    /// detector catches every disguise, so the user approves the exact words once.
+    /// </summary>
+    private static readonly HashSet<string> Harmless = ["start_pomodoro", "stop_pomodoro", "add_note"];
 
-    /// <summary>Anything that touches the clipboard, launches something or goes online needs a "Do it?" first.</summary>
+    /// <summary>Anything that touches the clipboard, launches something, goes online or speaks later needs a "Do it?" first.</summary>
     public static bool RequiresConfirmation(string tool) => !Harmless.Contains(tool);
 
-    /// <summary>
-    /// Per-request policy. Reminders and notes show text later, outside the chat — so a pinned (always visible)
-    /// note, or a reminder carrying a link, could be planted by text on screen to impersonate a real warning.
-    /// Those get a "Do it?" too.
-    /// </summary>
+    /// <summary>Per-request policy: a pinned note stays visible on the desktop, so it is confirmed like a reminder.</summary>
     public static bool RequiresConfirmation(ToolRequest request, string tool) => request switch
     {
         ToolRequest.AddNote { Pinned: true } => true,
-        ToolRequest.SetReminder r when LinkLike().IsMatch(r.Message) => true,
         _ => RequiresConfirmation(tool),
     };
-
-    [System.Text.RegularExpressions.GeneratedRegex(@"(https?://|www\.|\b[\w-]+\.(com|net|org|io|dev|app|in|co|xyz|me|info|biz|ru|cn|tk|link|site|online)\b)",
-        System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
-    private static partial System.Text.RegularExpressions.Regex LinkLike();
 }
 
 /// <summary>A validated tool call.</summary>
