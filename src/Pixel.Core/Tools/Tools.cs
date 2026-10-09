@@ -29,12 +29,28 @@ public static class ToolDefinitions
     ];
 }
 
-public static class ToolPolicy
+public static partial class ToolPolicy
 {
     private static readonly HashSet<string> Harmless = ["set_reminder", "start_pomodoro", "stop_pomodoro", "add_note"];
 
     /// <summary>Anything that touches the clipboard, launches something or goes online needs a "Do it?" first.</summary>
     public static bool RequiresConfirmation(string tool) => !Harmless.Contains(tool);
+
+    /// <summary>
+    /// Per-request policy. Reminders and notes show text later, outside the chat — so a pinned (always visible)
+    /// note, or a reminder carrying a link, could be planted by text on screen to impersonate a real warning.
+    /// Those get a "Do it?" too.
+    /// </summary>
+    public static bool RequiresConfirmation(ToolRequest request, string tool) => request switch
+    {
+        ToolRequest.AddNote { Pinned: true } => true,
+        ToolRequest.SetReminder r when LinkLike().IsMatch(r.Message) => true,
+        _ => RequiresConfirmation(tool),
+    };
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"(https?://|www\.|\b[\w-]+\.(com|net|org|io|dev|app|in|co|xyz|me|info|biz|ru|cn|tk|link|site|online)\b)",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex LinkLike();
 }
 
 /// <summary>A validated tool call.</summary>
@@ -92,7 +108,7 @@ public static class ToolArgs
         {
             case "set_reminder":
             {
-                var message = Str(a, "message") is { Length: > 0 } m ? m : "Reminder";
+                var message = Str(a, "message") is { Length: > 0 } m ? CleanReminder(m) : "Reminder";
                 if (Num(a, "minutes") is { } min && min > 0 && min <= 24 * 60)
                     return new ToolRequest.SetReminder(TimeSpan.FromMinutes(min), null, message);
                 if (Str(a, "at") is { } at && TimeOnly.TryParseExact(at, ["HH:mm", "H:mm"], CultureInfo.InvariantCulture, DateTimeStyles.None, out var t))
@@ -135,6 +151,13 @@ public static class ToolArgs
             default:
                 return new ToolRequest.Invalid($"I don't know how to \"{call.Name}\".");
         }
+    }
+
+    /// <summary>Reminder text appears later in a bubble or notification: one short line, no control characters.</summary>
+    private static string CleanReminder(string text)
+    {
+        var clean = new string(text.Where(c => !char.IsControl(c)).ToArray()).Trim();
+        return clean.Length <= 140 ? clean : clean[..139] + "…";
     }
 
     private static string? Str(JsonElement o, string name) =>

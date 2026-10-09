@@ -22,7 +22,7 @@ internal sealed class ToolExecutor(Func<IProductivity> productivity)
     public PreparedAction Prepare(string toolName, ToolRequest request)
     {
         var (title, detail) = request.Describe();
-        var confirm = ToolPolicy.RequiresConfirmation(toolName);
+        var confirm = ToolPolicy.RequiresConfirmation(request, toolName);
         switch (request)
         {
             case ToolRequest.Invalid i:

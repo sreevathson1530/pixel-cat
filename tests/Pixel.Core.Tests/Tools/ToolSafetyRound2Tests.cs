@@ -69,3 +69,36 @@ public class ToolSafetyRound2Tests
     public void Ordinary_shortcut_targets_are_allowed() =>
         Assert.False(LaunchSafety.IsBlockedTarget(@"C:\Program Files\Google\Chrome\Application\chrome.exe"));
 }
+
+public class ReminderAndNoteSpoofingTests
+{
+    private static ToolRequest Parse(string name, string json) =>
+        ToolArgs.Parse(new Pixel.Core.Brain.ToolInvocation("c1", name, json), _ => true);
+
+    [Fact]
+    public void Pinned_notes_need_confirmation_plain_notes_do_not()
+    {
+        Assert.True(ToolPolicy.RequiresConfirmation(Parse("add_note", """{"text":"x","pinned":true}"""), "add_note"));
+        Assert.False(ToolPolicy.RequiresConfirmation(Parse("add_note", """{"text":"x"}"""), "add_note"));
+    }
+
+    [Theory]
+    [InlineData("Your password expired, sign in at https://evil.example/login")]
+    [InlineData("Verify your account: www.evil.example")]
+    [InlineData("go to bank-secure.com/verify now")]
+    public void Reminders_carrying_links_need_confirmation(string message) =>
+        Assert.True(ToolPolicy.RequiresConfirmation(
+            Parse("set_reminder", $$"""{"minutes":5,"message":{{System.Text.Json.JsonSerializer.Serialize(message)}}}"""), "set_reminder"));
+
+    [Fact]
+    public void Ordinary_reminders_stay_one_step() =>
+        Assert.False(ToolPolicy.RequiresConfirmation(Parse("set_reminder", """{"minutes":5,"message":"drink water. then stretch"}"""), "set_reminder"));
+
+    [Fact]
+    public void Reminder_text_is_capped_and_cleaned()
+    {
+        var r = Assert.IsType<ToolRequest.SetReminder>(Parse("set_reminder", $$"""{"minutes":5,"message":"{{new string('a', 300)}}\u0007"}"""));
+        Assert.True(r.Message.Length <= 140);
+        Assert.DoesNotContain('\u0007', r.Message);
+    }
+}

@@ -125,13 +125,15 @@ internal sealed class ReminderService : IProductivity, IDisposable
     {
         Log.Info($"reminder fired: {r.Kind}");
         Fired?.Invoke(r);
+        // Custom text came from a chat; frame it so it can never pass for a system or app warning.
+        var text = r.Kind == ReminderKind.Custom ? $"⏰ Your reminder: {r.Message}" : r.Message;
         if (_host.IsVanished)
         {
-            _host.Tray.Notify("Pixel 🐾", r.Message);
+            _host.Tray.Notify("Pixel reminder 🐾", text);
             return;
         }
         _host.Cat.RaiseAlert(null, seconds: 8);
-        _bubble.Say(r.Message, _host.Cat.Bounds, TimeSpan.FromSeconds(r.Kind == ReminderKind.Custom ? 20 : 10));
+        _bubble.Say(text, _host.Cat.Bounds, TimeSpan.FromSeconds(r.Kind == ReminderKind.Custom ? 20 : 10));
     }
 
     private void UpdateBadge()
