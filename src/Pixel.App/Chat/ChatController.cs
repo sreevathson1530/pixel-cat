@@ -36,6 +36,7 @@ internal sealed class ChatController
         "Mrrp… my brain went quiet for 4 minutes, so I stopped. Your PC is probably short on free memory — "
         + "close a few apps, or pick the smaller brain in Settings, then ask again.";
     private bool _opening;
+    private StallWatchdog? _watchdog;
     private readonly ToolExecutor _tools;
     private readonly HistoryStore? _history;
     private long? _historyId;
@@ -63,9 +64,29 @@ internal sealed class ChatController
     public async Task<bool> ConfirmAsync(string title, string detail)
     {
         var (id, answer) = ShowAction(title, detail, needsConfirm: true);
-        var ok = await answer;
+        var ok = await WaitForUserAsync(answer);
         _window?.Post(new { type = "actionResult", id, ok, text = ok ? "Okay!" : "Skipped." });
         return ok;
+    }
+
+    private async Task<bool> WaitForUserAsync(Task<bool> answer)
+    {
+        if (answer.IsCompleted) return await answer;
+        _watchdog?.Pause();
+        try
+        {
+            return await answer;
+        }
+        finally
+        {
+            _watchdog?.Pet();
+        }
+    }
+
+    private void ReleasePendingConfirms()
+    {
+        foreach (var p in _pendingConfirms.Values) p.TrySetResult(false);
+        _pendingConfirms.Clear();
     }
 
     /// <summary>Adds an action card; with <paramref name="needsConfirm"/> the task completes on Yes/No.</summary>
@@ -86,7 +107,7 @@ internal sealed class ChatController
         var request = ToolArgs.Parse(call, p => File.Exists(p) || Directory.Exists(p));
         var action = _tools.Prepare(call.Name, request); // refused actions skip confirmation and report why
         var (id, answer) = ShowAction(action.Title, action.Detail, action.NeedsConfirm);
-        if (!await answer)
+        if (!await WaitForUserAsync(answer))
         {
             _window?.Post(new { type = "actionResult", id, ok = false, text = "Skipped." });
             return "The user declined this action.";
@@ -192,8 +213,7 @@ internal sealed class ChatController
             _historyId = null;
         }
         _turn?.Cancel();
-        foreach (var p in _pendingConfirms.Values) p.TrySetResult(false);
-        _pendingConfirms.Clear();
+        ReleasePendingConfirms();
         if (_conversation.Count > 0) ConversationEnded?.Invoke(_conversation.ToArray());
         _conversation.Clear();
         _window?.Post(new { type = "reset" });
@@ -276,6 +296,14 @@ internal sealed class ChatController
         _turn?.Cancel();
         var cts = _turn = new CancellationTokenSource();
         using var watchdog = new StallWatchdog(cts, StallLimit);
+        _watchdog = watchdog;
+        // Stop (or a newer question) must also release any card still waiting for a click.
+        // On the UI thread (Stop, new question, vanish) release right away, before a newer turn adds its own cards.
+        using var release = cts.Token.Register(() =>
+        {
+            if (_host.Dispatcher.CheckAccess()) ReleasePendingConfirms();
+            else _host.Dispatcher.BeginInvoke(ReleasePendingConfirms);
+        });
         _conversation.Add(new ChatMessage(ChatRole.User, text));
         Remember(ChatRole.User, text);
         SetCatChat(ChatState.Thinking);
@@ -350,6 +378,7 @@ internal sealed class ChatController
         finally
         {
             Log.Info($"turn: screen={(screen is null ? "off" : "on")} first token {firstToken:0.0}s, total {watch.Elapsed.TotalSeconds:0.0}s, {answer.Length} chars");
+            if (ReferenceEquals(_watchdog, watchdog)) _watchdog = null;
             if (ReferenceEquals(_turn, cts)) SetCatChat(ChatState.None);
             _window?.Post(new { type = "status", text = "here for you", busy = false });
         }

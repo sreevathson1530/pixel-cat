@@ -22,6 +22,9 @@ internal sealed class StallWatchdog : IDisposable
 
     public void Pet() => _timer.Change(_limit, Timeout.InfiniteTimeSpan);
 
+    /// <summary>Stop counting — e.g. while a card waits for the user's click (their thinking time isn't a stall).</summary>
+    public void Pause() => _timer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+
     private void Fire()
     {
         Interlocked.Exchange(ref _fired, 1);
