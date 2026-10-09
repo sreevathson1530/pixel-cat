@@ -6,6 +6,7 @@ using Pixel.App.Cat;
 using Pixel.App.Chat;
 using Pixel.App.History;
 using Pixel.App.Input;
+using Pixel.App.Reminders;
 using Pixel.App.Screen;
 using Pixel.App.Tools;
 using Pixel.Core.Art;
@@ -38,6 +39,8 @@ internal sealed class AppHost : IDisposable
     public ScreenWatcher Screen { get; private set; } = null!;
     public BrainService Brain { get; private set; } = null!;
     public IProductivity Productivity { get; set; } = new NoProductivity();
+    public ReminderService? Reminders { get; private set; }
+    private NotesWindow? _notesWindow;
     public HistoryStore? History { get; private set; }
     private HistoryWindow? _historyWindow;
     private readonly ErrorSpotter _errors = new();
@@ -84,6 +87,10 @@ internal sealed class AppHost : IDisposable
         _tray.Quit += () => Application.Current.Shutdown();
         _tray.OpenHistory += ShowHistory;
 
+        Reminders = new ReminderService(this);
+        Productivity = Reminders;
+        _tray.OpenNotes += ShowNotes;
+
         // Only the installed build registers itself; a dev build under bin\ never should.
         var devBuild = Environment.ProcessPath?.Contains(@"\bin\", StringComparison.OrdinalIgnoreCase) == true;
         if (!devBuild && Settings.StartWithWindows && !AutoStart.IsEnabled()) AutoStart.Set(true);
@@ -126,6 +133,20 @@ internal sealed class AppHost : IDisposable
         }
     }
 
+    private void ShowNotes()
+    {
+        if (Reminders is null) return;
+        if (_notesWindow is { IsLoaded: true })
+        {
+            _notesWindow.Activate();
+            return;
+        }
+        _notesWindow = new NotesWindow(Reminders);
+        _notesWindow.Closed += (_, _) => _notesWindow = null;
+        _notesWindow.Show();
+        _notesWindow.Activate();
+    }
+
     private void ShowHistory()
     {
         if (History is null) return;
@@ -145,6 +166,7 @@ internal sealed class AppHost : IDisposable
         Settings = settings;
         SettingsStore.Save(SettingsStore.DefaultPath, settings);
         Cat.Palette = Palette.Named(settings.Palette);
+        Reminders?.ApplySettings();
     }
 
     private void SetAutoStart(bool enabled)
@@ -189,6 +211,7 @@ internal sealed class AppHost : IDisposable
         Screen?.Dispose();
         Brain?.Dispose();
         History?.Dispose();
+        Reminders?.Dispose();
         _hooks?.Dispose();
         _tray?.Dispose();
     }

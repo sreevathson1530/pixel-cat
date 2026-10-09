@@ -5,7 +5,13 @@ namespace Pixel.Core.Brain;
 
 public sealed record ToolCallDelta(int Index, string? Id, string? Name, string? ArgumentsFragment);
 
-public sealed record SseDelta(string? Content, IReadOnlyList<ToolCallDelta> ToolCalls, string? FinishReason, bool Done);
+/// <param name="Progress">Prompt-reading progress (tokens processed, total, served from cache), when the server reports it.</param>
+public sealed record SseDelta(
+    string? Content,
+    IReadOnlyList<ToolCallDelta> ToolCalls,
+    string? FinishReason,
+    bool Done,
+    (int Processed, int Total, int Cache)? Progress = null);
 
 /// <summary>Incremental parser for OpenAI-style <c>text/event-stream</c> chat completion chunks.</summary>
 public sealed class SseParser
@@ -41,7 +47,11 @@ public sealed class SseParser
         try
         {
             using var doc = JsonDocument.Parse(json);
-            if (!doc.RootElement.TryGetProperty("choices", out var choices) || choices.GetArrayLength() == 0) return null;
+            (int, int, int)? progress = null;
+            if (doc.RootElement.TryGetProperty("prompt_progress", out var pp) && pp.ValueKind == JsonValueKind.Object)
+                progress = (Int(pp, "processed"), Int(pp, "total"), Int(pp, "cache"));
+            if (!doc.RootElement.TryGetProperty("choices", out var choices) || choices.GetArrayLength() == 0)
+                return progress is null ? null : new SseDelta(null, [], null, Done: false, progress);
             var choice = choices[0];
             string? content = null, finish = null;
             var calls = new List<ToolCallDelta>();
@@ -65,13 +75,16 @@ public sealed class SseParser
                 }
             }
             if (choice.TryGetProperty("finish_reason", out var fr) && fr.ValueKind == JsonValueKind.String) finish = fr.GetString();
-            return new SseDelta(content, calls, finish, Done: false);
+            return new SseDelta(content, calls, finish, Done: false, progress);
         }
         catch (JsonException)
         {
             return null;
         }
     }
+
+    private static int Int(JsonElement o, string name) =>
+        o.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : 0;
 }
 
 /// <summary>Reassembles streamed tool-call fragments into complete invocations.</summary>

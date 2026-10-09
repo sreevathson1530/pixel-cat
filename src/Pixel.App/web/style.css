@@ -240,6 +240,7 @@ textarea::placeholder { color: #6f6a87; }
   flex: none;
 }
 .send:disabled { background: var(--surface-2); color: var(--muted); cursor: default; }
+.send.stop { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
 .send svg { stroke-width: 2; }
 
 @keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }

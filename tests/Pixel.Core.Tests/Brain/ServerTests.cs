@@ -163,6 +163,22 @@ public class ServerManagerTests
     }
 
     [Fact]
+    public async Task Server_is_never_unloaded_while_a_question_is_being_answered()
+    {
+        var (m, l, _, advance) = Make();
+        await m.EnsureReadyAsync(Opts, CancellationToken.None);
+        using (m.BeginRequest())
+        {
+            advance(TimeSpan.FromMinutes(25)); // a slow prompt on a memory-starved PC
+            Assert.False(m.StopIfIdle());
+            Assert.False(l.Launched[0].Killed);
+        }
+        Assert.False(m.StopIfIdle()); // the request just ended: idle time restarts
+        advance(TimeSpan.FromMinutes(11));
+        Assert.True(m.StopIfIdle());
+    }
+
+    [Fact]
     public async Task Idle_server_is_stopped_after_timeout()
     {
         var (m, l, _, advance) = Make();
@@ -206,9 +222,13 @@ public class RepackRuleTests
 
     [Fact]
     public void Repacking_is_skipped_when_commit_is_short() =>
-        Assert.False(MemoryGate.CanRepack(availableCommit: 2 * GB, modelBytes: 9 * GB));
+        Assert.False(MemoryGate.CanRepack(availablePhys: 14 * GB, availableCommit: 2 * GB, modelBytes: 9 * GB));
 
     [Fact]
     public void Repacking_is_used_when_memory_allows() =>
-        Assert.True(MemoryGate.CanRepack(availableCommit: 12 * GB, modelBytes: 9 * GB));
+        Assert.True(MemoryGate.CanRepack(availablePhys: 12 * GB, availableCommit: 12 * GB, modelBytes: 9 * GB));
+
+    [Fact]
+    public void Repacking_is_skipped_when_ram_is_short_even_with_commit_to_spare() =>
+        Assert.False(MemoryGate.CanRepack(availablePhys: 3 * GB, availableCommit: 12 * GB, modelBytes: 9 * GB));
 }

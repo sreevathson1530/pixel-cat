@@ -61,6 +61,7 @@ public sealed class LlamaBrain(
             yield break;
         }
 
+        using var inFlight = server.BeginRequest();
         yield return new StatusEvent(screen is null ? "thinking…" : "reading your screen & thinking…");
         var prompt = PromptBuilder.Build(conversation, screen, clock());
         await foreach (var ev in client.StreamAsync(prompt, tools, ct))

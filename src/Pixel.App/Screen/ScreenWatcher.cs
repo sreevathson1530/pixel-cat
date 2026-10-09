@@ -43,6 +43,11 @@ internal sealed class ScreenWatcher(ScreenReader reader, Func<IntPtr, bool> isOw
                 {
                     break;
                 }
+                catch (System.ComponentModel.Win32Exception)
+                {
+                    // Locked PC / secure desktop: nothing to read. Try again a little later, quietly.
+                    await Task.Delay(Interval * 5, CancellationToken.None);
+                }
                 catch (Exception e)
                 {
                     Log.Error("screen watcher tick", e);

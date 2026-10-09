@@ -43,6 +43,8 @@ public sealed class LlamaClient(HttpClient http, Func<(Uri BaseUri, string? ApiK
                         done = true;
                         break;
                     }
+                    if (delta.Progress is var (processed, total, _) && total > 0)
+                        yield return new ProgressEvent(processed, total);
                     foreach (var t in delta.ToolCalls) calls.Add(t);
                     if (delta.Content is { Length: > 0 } text && filter.Push(text) is { Length: > 0 } visible)
                         yield return new TokenEvent(visible);
@@ -87,6 +89,7 @@ public sealed class LlamaClient(HttpClient http, Func<(Uri BaseUri, string? ApiK
             w.WriteBoolean("stream", true);
             w.WriteNumber("temperature", 0.4);
             w.WriteBoolean("cache_prompt", true);
+            w.WriteBoolean("return_progress", true);
             w.WriteStartArray("messages");
             foreach (var m in messages)
             {

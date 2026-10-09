@@ -31,6 +31,11 @@ internal sealed class ChatController
     private int _confirmSeq;
 
     private const int MaxToolRounds = 3;
+    private static readonly TimeSpan StallLimit = TimeSpan.FromMinutes(4);
+    private const string StallMessage =
+        "Mrrp… my brain went quiet for 4 minutes, so I stopped. Your PC is probably short on free memory — "
+        + "close a few apps, or pick the smaller brain in Settings, then ask again.";
+    private bool _opening;
     private readonly ToolExecutor _tools;
     private readonly HistoryStore? _history;
     private long? _historyId;
@@ -102,6 +107,20 @@ internal sealed class ChatController
             Hide();
             return;
         }
+        if (_opening) return; // a second press while the panel is still starting up
+        _opening = true;
+        try
+        {
+            await OpenAsync();
+        }
+        finally
+        {
+            _opening = false;
+        }
+    }
+
+    private async Task OpenAsync()
+    {
         _screen = SafeSnapshot(); // the panel is excluded from capture, so reading can overlap showing it
         _host.Cat.HoldStill = true;
         await EnsureWindowAsync();
@@ -239,6 +258,9 @@ internal sealed class ChatController
             case "drag":
                 _window!.BeginDrag();
                 break;
+            case "stop":
+                _turn?.Cancel();
+                break;
             case "confirm":
                 var cid = m.GetProperty("id").GetString() ?? "";
                 if (_pendingConfirms.Remove(cid, out var pending)) pending.TrySetResult(m.GetProperty("ok").GetBoolean());
@@ -253,6 +275,7 @@ internal sealed class ChatController
         double? firstToken = null;
         _turn?.Cancel();
         var cts = _turn = new CancellationTokenSource();
+        using var watchdog = new StallWatchdog(cts, StallLimit);
         _conversation.Add(new ChatMessage(ChatRole.User, text));
         Remember(ChatRole.User, text);
         SetCatChat(ChatState.Thinking);
@@ -269,9 +292,15 @@ internal sealed class ChatController
                     switch (ev)
                     {
                         case StatusEvent s:
+                            watchdog.Pet();
                             _window!.Post(new { type = "status", text = s.Text, busy = s.Busy });
                             break;
+                        case ProgressEvent p:
+                            watchdog.Pet();
+                            _window!.Post(new { type = "status", text = $"reading… {p.Fraction:P0}", busy = true });
+                            break;
                         case TokenEvent t:
+                            watchdog.Pet();
                             if (answer.Length == 0)
                             {
                                 SetCatChat(ChatState.Talking);
@@ -303,6 +332,11 @@ internal sealed class ChatController
                 SetCatChat(ChatState.Thinking);
             }
             _window!.Post(new { type = "done" });
+        }
+        catch (OperationCanceledException) when (watchdog.Fired)
+        {
+            Log.Info("turn stalled; cancelled by watchdog");
+            _window?.Post(new { type = "error", text = StallMessage });
         }
         catch (OperationCanceledException)
         {

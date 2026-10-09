@@ -54,9 +54,11 @@ public static class MemoryGate
 
     /// <summary>
     /// CPU "repacking" copies most weights into a faster layout in committed memory (~0.75× the file).
-    /// Only worth it when Windows can spare that; otherwise the weights stay memory-mapped.
+    /// Only worth it when Windows can spare that in both commit and physical RAM (a paged-out repack is far slower
+    /// than reading the memory-mapped file); otherwise the weights stay memory-mapped.
     /// </summary>
-    public static bool CanRepack(long availableCommit, long modelBytes) => availableCommit > modelBytes * 3 / 4 + CacheBytes;
+    public static bool CanRepack(long availablePhys, long availableCommit, long modelBytes) =>
+        availableCommit > modelBytes * 3 / 4 + CacheBytes && availablePhys > modelBytes * 3 / 4 + CacheBytes;
 
     public static MemoryVerdict Check(long availablePhys, long availableCommit, long modelBytes, bool gpu)
     {
@@ -122,6 +124,7 @@ public sealed class ServerManager(
     private readonly TimeSpan _startTimeout = startTimeout ?? TimeSpan.FromMinutes(4);
     private IServerProcess? _process;
     private DateTimeOffset _lastUse;
+    private int _inFlight;
 
     public ServerState State { get; private set; } = ServerState.Stopped;
 
@@ -163,10 +166,33 @@ public sealed class ServerManager(
 
     public void Touch() => _lastUse = clock();
 
+    /// <summary>
+    /// Marks a question as in progress until disposed. The server is never unloaded mid-question — on a
+    /// memory-starved PC reading a long prompt can take many minutes before the first word arrives.
+    /// </summary>
+    public IDisposable BeginRequest()
+    {
+        Interlocked.Increment(ref _inFlight);
+        Touch();
+        return new RequestScope(this);
+    }
+
+    private sealed class RequestScope(ServerManager owner) : IDisposable
+    {
+        private int _done;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _done, 1) == 1) return;
+            Interlocked.Decrement(ref owner._inFlight);
+            owner.Touch();
+        }
+    }
+
     /// <summary>Stops the server if it has been idle too long. Returns true if it was stopped.</summary>
     public bool StopIfIdle()
     {
-        if (State != ServerState.Ready || clock() - _lastUse < idleTimeout) return false;
+        if (State != ServerState.Ready || Volatile.Read(ref _inFlight) > 0 || clock() - _lastUse < idleTimeout) return false;
         Stop();
         return true;
     }

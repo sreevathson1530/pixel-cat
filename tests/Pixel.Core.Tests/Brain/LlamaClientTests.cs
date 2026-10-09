@@ -127,3 +127,32 @@ public class LlamaClientSecurityTests
         Assert.IsType<ErrorEvent>(Assert.Single(events));
     }
 }
+
+public class LlamaClientProgressTests
+{
+    private sealed class Server(string body) : HttpMessageHandler
+    {
+        public string? RequestBody { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            RequestBody = await request.Content!.ReadAsStringAsync(ct);
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body) };
+        }
+    }
+
+    [Fact]
+    public async Task Prompt_reading_progress_becomes_progress_events_and_is_requested()
+    {
+        var server = new Server(
+            "data: {\"choices\":[{\"delta\":{}}],\"prompt_progress\":{\"total\":1000,\"cache\":0,\"processed\":500,\"time_ms\":1}}\n\n" +
+            "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n");
+        var client = new LlamaClient(new HttpClient(server) { BaseAddress = new Uri("http://127.0.0.1:1/") });
+        var events = new List<BrainEvent>();
+        await foreach (var e in client.StreamAsync([new ChatMessage(ChatRole.User, "hi")], null, CancellationToken.None)) events.Add(e);
+
+        var p = Assert.Single(events.OfType<ProgressEvent>());
+        Assert.Equal(0.5, p.Fraction, 3);
+        Assert.Contains("\"return_progress\":true", server.RequestBody);
+    }
+}

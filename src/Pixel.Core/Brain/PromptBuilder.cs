@@ -10,7 +10,7 @@ namespace Pixel.Core.Brain;
 /// </summary>
 public static class PromptBuilder
 {
-    public const int MaxScreenChars = 8000;
+    public const int MaxScreenChars = 4000; // ≈1k tokens: active window first; most questions need far less
     public const int MaxPromptChars = 18000; // ≈ 6k tokens, leaving room for the answer in an 8k context
     private const string Truncated = "\n…[truncated]";
 

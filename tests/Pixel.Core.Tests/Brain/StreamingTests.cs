@@ -5,6 +5,14 @@ namespace Pixel.Core.Tests.Brain;
 public class SseParserTests
 {
     [Fact]
+    public void Prompt_progress_is_reported()
+    {
+        var d = Assert.Single(new SseParser().Feed(
+            "data: {\"choices\":[{\"delta\":{}}],\"prompt_progress\":{\"total\":2000,\"cache\":500,\"processed\":1000,\"time_ms\":4000}}\n\n"));
+        Assert.Equal((1000, 2000, 500), d.Progress);
+    }
+
+    [Fact]
     public void Parses_content_deltas_split_across_chunks()
     {
         var p = new SseParser();

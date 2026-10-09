@@ -188,15 +188,22 @@
 
   // ---------------------------------------------------------------- composer
 
+  const sendIcon = sendBtn.innerHTML;
+  const stopIcon = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5"/></svg>';
+
   function setBusy(b) {
     busy = b;
-    sendBtn.disabled = b || !text.value.trim();
+    sendBtn.innerHTML = b ? stopIcon : sendIcon;
+    sendBtn.title = b ? "Stop" : "Send (Enter)";
+    sendBtn.setAttribute("aria-label", b ? "Stop" : "Send");
+    sendBtn.classList.toggle("stop", b);
+    sendBtn.disabled = !b && !text.value.trim();
   }
 
   function autosize() {
     text.style.height = "auto";
     text.style.height = Math.min(text.scrollHeight, 120) + "px";
-    sendBtn.disabled = busy || !text.value.trim();
+    sendBtn.disabled = !busy && !text.value.trim();
   }
 
   function submit(value) {
@@ -217,7 +224,7 @@
       submit();
     }
   });
-  sendBtn.addEventListener("click", () => submit());
+  sendBtn.addEventListener("click", () => (busy ? send({ type: "stop" }) : submit()));
   document.querySelectorAll(".chip").forEach((c) => c.addEventListener("click", () => submit(c.textContent)));
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") send({ type: "close" });

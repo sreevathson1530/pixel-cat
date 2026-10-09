@@ -63,7 +63,8 @@ internal sealed class BrainService : IDisposable
         var threads = s.LlamaThreads > 0 ? s.LlamaThreads : Math.Clamp(Environment.ProcessorCount / 2 + 1, 4, 12);
         var gpuLayers = s.LlamaBackend == "cpu" ? 0 : 99;
         var extra = s.LlamaExtraArgs;
-        if (s.LlamaBackend == "cpu" && !MemoryGate.CanRepack(MemoryInfo.Read().AvailableCommit, new FileInfo(modelPath).Length))
+        var (phys, commit) = MemoryInfo.Read();
+        if (s.LlamaBackend == "cpu" && !MemoryGate.CanRepack(phys, commit, new FileInfo(modelPath).Length))
             extra += " --no-repack"; // keep weights memory-mapped when Windows can't spare the repack copy
         return new ServerOptions(exe, modelPath, FreeLoopbackPort(), s.ContextSize, threads, gpuLayers, extra,
             ApiKey: RandomNumberGenerator.GetHexString(48, lowercase: true));
