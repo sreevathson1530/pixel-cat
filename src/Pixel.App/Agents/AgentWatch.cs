@@ -163,8 +163,7 @@ internal sealed class AgentWatchService : IDisposable
             $"• UserPromptSubmit → {ClaudeHookConfig.Command(port, "working")}\n" +
             $"• Stop → {ClaudeHookConfig.Command(port, "done")}\n" +
             $"• Notification → {ClaudeHookConfig.Command(port, "needs-you")}\n\n" +
-            "They only tell Pixel when Claude Code starts, finishes or needs you — no prompt text is sent, and nothing leaves this PC.
-" +
+            "They only tell Pixel when Claude Code starts, finishes or needs you — no prompt text is sent, and nothing leaves this PC.\n" +
             "Your other settings are kept, and a backup is saved as settings.json.pixel-backup.\n\nConnect now?";
         if (MessageBox.Show(preview, "Connect Claude Code", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
 
