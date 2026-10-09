@@ -169,3 +169,18 @@ public class ClaudeHookConfigTests
     public void Invalid_existing_json_is_refused_rather_than_overwritten() =>
         Assert.ThrowsAny<System.Text.Json.JsonException>(() => ClaudeHookConfig.Merge("{ not json", 17861));
 }
+
+public class ClaudeHookPrivacyTests
+{
+    [Theory]
+    [InlineData("working")]
+    [InlineData("done")]
+    [InlineData("needs-you")]
+    public void Hooks_never_forward_claude_codes_input(string kind)
+    {
+        // Claude Code pipes the hook's JSON (including the user's whole prompt) to stdin; it must not be sent on.
+        var command = ClaudeHookConfig.Command(17861, kind);
+        Assert.DoesNotContain("@-", command);
+        Assert.DoesNotContain("--data-binary", command);
+    }
+}

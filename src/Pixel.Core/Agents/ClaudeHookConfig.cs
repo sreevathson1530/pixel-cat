@@ -15,8 +15,12 @@ public static class ClaudeHookConfig
 
     private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
 
+    /// <summary>
+    /// An empty POST: Claude Code pipes the hook's JSON — including the user's whole prompt — to stdin, and Pixel
+    /// only needs to know that something happened, so none of it is forwarded.
+    /// </summary>
     public static string Command(int port, string kind) =>
-        $"curl -s -m 2 -X POST -H \"{Marker}\" --data-binary @- http://127.0.0.1:{port}/event/{kind}";
+        $"curl -s -m 2 -X POST -H \"{Marker}\" -d \"\" http://127.0.0.1:{port}/event/{kind}";
 
     /// <exception cref="JsonException">The existing file is not a JSON object — never overwrite it blindly.</exception>
     public static string Merge(string? existingJson, int port)
