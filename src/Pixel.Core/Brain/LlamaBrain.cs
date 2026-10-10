@@ -37,7 +37,8 @@ public sealed class LlamaBrain(
         }
 
         var options = optionsFor(modelPath);
-        if (!server.IsAlive)
+        // A warm-up may already be loading it: memory was checked then, and is now being filled by the brain itself.
+        if (!server.IsAlive && server.State != ServerState.Starting)
         {
             var bytes = new FileInfo(modelPath).Length + (options.ProjectorPath is { } projector ? new FileInfo(projector).Length : 0);
             switch (checkMemory(bytes))
@@ -57,10 +58,14 @@ public sealed class LlamaBrain(
                 yield break;
             }
         }
-        else if (!await server.EnsureReadyAsync(options, ct))
+        else
         {
-            yield return new ErrorEvent("My brain stopped and wouldn't restart. Details are in %APPDATA%\\Pixel\\llama-server.log.");
-            yield break;
+            if (server.State == ServerState.Starting) yield return new StatusEvent("waking up my brain… the first answer takes a little while");
+            if (!await server.EnsureReadyAsync(options, ct))
+            {
+                yield return new ErrorEvent("My brain stopped and wouldn't restart. Details are in %APPDATA%\\Pixel\\llama-server.log.");
+                yield break;
+            }
         }
 
         using var inFlight = server.BeginRequest();
@@ -74,6 +79,30 @@ public sealed class LlamaBrain(
             server.Touch();
             yield return ev;
         }
+        server.Touch();
+    }
+
+    /// <summary>
+    /// Loads the brain and reads the conversation and screen while the user is still typing, so the answer starts
+    /// sooner. Silent and best effort: never asks anything — when memory is short it waits for the real question.
+    /// </summary>
+    public async Task WarmUpAsync(IReadOnlyList<ChatMessage> conversation, ScreenSnapshot? screen, CancellationToken ct)
+    {
+        if (locateModel() is not ModelStatus.Found found) return;
+        var options = optionsFor(found.Path);
+        if (!server.IsAlive)
+        {
+            if (server.State == ServerState.Starting) return; // a question is already waking it
+            var bytes = new FileInfo(found.Path).Length + (options.ProjectorPath is { } projector ? new FileInfo(projector).Length : 0);
+            if (checkMemory(bytes) is not MemoryVerdict.Ok) return;
+            if (!await server.EnsureReadyAsync(options, ct)) return;
+        }
+
+        using var inFlight = server.BeginRequest();
+        var vision = server.Current?.ProjectorPath is not null;
+        // The question isn't typed yet: an empty one renders everything up to where its words will go.
+        var prompt = PromptBuilder.Build([.. conversation, new ChatMessage(ChatRole.User, "")], screen, clock(), vision);
+        await client.PrefillAsync(prompt, tools, ct);
         server.Touch();
     }
 }

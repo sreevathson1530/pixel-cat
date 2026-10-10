@@ -57,6 +57,18 @@ public sealed class LlamaClient(HttpClient http, Func<(Uri BaseUri, string? ApiK
         }
     }
 
+    /// <summary>
+    /// Has the server read <paramref name="messages"/> into its cache without really answering, so a question that
+    /// starts the same way only has to read what's new. Returns false if the server couldn't be reached.
+    /// </summary>
+    public async Task<bool> PrefillAsync(IReadOnlyList<ChatMessage> messages, IReadOnlyList<ToolSpec>? tools, CancellationToken ct)
+    {
+        var (response, failure) = await SendAsync(BuildRequest(messages, tools, maxTokens: 1), ct);
+        if (failure is not null) return false;
+        using (response) await response!.Content.ReadAsStringAsync(ct);
+        return true;
+    }
+
     private async Task<(HttpResponseMessage? Response, string? Failure)> SendAsync(string body, CancellationToken ct)
     {
         var target = endpoint is null ? (http.BaseAddress!, null) : endpoint();
@@ -80,13 +92,15 @@ public sealed class LlamaClient(HttpClient http, Func<(Uri BaseUri, string? ApiK
         }
     }
 
-    public static string BuildRequest(IReadOnlyList<ChatMessage> messages, IReadOnlyList<ToolSpec>? tools)
+    /// <param name="maxTokens">Cap on the answer; set only for a cache warm-up, which isn't streamed.</param>
+    public static string BuildRequest(IReadOnlyList<ChatMessage> messages, IReadOnlyList<ToolSpec>? tools, int? maxTokens = null)
     {
         using var ms = new MemoryStream();
         using (var w = new Utf8JsonWriter(ms))
         {
             w.WriteStartObject();
-            w.WriteBoolean("stream", true);
+            w.WriteBoolean("stream", maxTokens is null);
+            if (maxTokens is { } max) w.WriteNumber("max_tokens", max);
             w.WriteNumber("temperature", 0.4);
             w.WriteBoolean("cache_prompt", true);
             w.WriteBoolean("return_progress", true);

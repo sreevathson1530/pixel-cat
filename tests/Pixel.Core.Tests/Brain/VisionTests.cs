@@ -187,7 +187,12 @@ public sealed class VisionBrainTests : IDisposable
 
     private sealed class Launcher : IServerLauncher
     {
-        public IServerProcess Launch(ServerOptions o) => new Proc();
+        public int Launches;
+        public IServerProcess Launch(ServerOptions o)
+        {
+            Launches++;
+            return new Proc();
+        }
     }
 
     private sealed class AlwaysReady : IHealthProbe
@@ -209,7 +214,10 @@ public sealed class VisionBrainTests : IDisposable
         }
     }
 
-    private async Task<(string Body, long MemoryAsked, List<BrainEvent> Events)> Ask(bool withProjector)
+    private static readonly ScreenSnapshot Wallpaper =
+        new(DateTimeOffset.Now, "Desktop (wallpaper and icons)", "explorer", "", "", [9, 9, 9]);
+
+    private (LlamaBrain Brain, Capture Http, Launcher Launcher, List<long> MemoryAsked) Make(bool withProjector, MemoryVerdict? verdict = null)
     {
         var model = Path.Combine(_dir, "Qwen3VL-4B-Instruct-Q4_K_M.gguf");
         File.WriteAllBytes(model, new byte[100]);
@@ -217,44 +225,165 @@ public sealed class VisionBrainTests : IDisposable
         File.WriteAllBytes(projector, new byte[40]);
 
         var http = new Capture();
-        long asked = 0;
+        var launcher = new Launcher();
+        var asked = new List<long>();
         var brain = new LlamaBrain(
-            new ServerManager(new Launcher(), new AlwaysReady(), () => DateTimeOffset.Now, TimeSpan.FromMinutes(10), TimeSpan.Zero),
+            new ServerManager(launcher, new AlwaysReady(), () => DateTimeOffset.Now, TimeSpan.FromMinutes(10), TimeSpan.Zero),
             () => new ModelStatus.Found(model),
             path => new ServerOptions("llama-server.exe", path, 17860, 8192, 4, 0, ProjectorPath: withProjector ? projector : null),
             bytes =>
             {
-                asked = bytes;
-                return new MemoryVerdict.Ok();
+                asked.Add(bytes);
+                return verdict ?? new MemoryVerdict.Ok();
             },
             _ => Task.FromResult(true),
             new LlamaClient(new HttpClient(http) { BaseAddress = new Uri("http://127.0.0.1:17860/") }),
             [],
             () => DateTimeOffset.Now);
+        return (brain, http, launcher, asked);
+    }
 
-        var screen = new ScreenSnapshot(DateTimeOffset.Now, "Desktop (wallpaper and icons)", "explorer", "", "", [9, 9, 9]);
+    private static async Task<List<BrainEvent>> Ask(LlamaBrain brain)
+    {
         var events = new List<BrainEvent>();
-        await foreach (var e in brain.AskAsync([new ChatMessage(ChatRole.User, "who is on my wallpaper?")], screen, CancellationToken.None))
+        await foreach (var e in brain.AskAsync([new ChatMessage(ChatRole.User, "who is on my wallpaper?")], Wallpaper, CancellationToken.None))
             events.Add(e);
-        return (http.Body, asked, events);
+        return events;
     }
 
     [Fact]
     public async Task Vision_brain_sends_the_screenshot_and_counts_the_projector_memory()
     {
-        var (body, memory, events) = await Ask(withProjector: true);
-        Assert.Contains("data:image/jpeg;base64,", body);
-        Assert.Equal(140, memory);
+        var (brain, http, _, memory) = Make(withProjector: true);
+        var events = await Ask(brain);
+        Assert.Contains("data:image/jpeg;base64,", http.Body);
+        Assert.Equal([140L], memory);
         Assert.Contains(events, e => e is StatusEvent { Text: "looking at your screen…" });
     }
 
     [Fact]
     public async Task Text_brain_sends_only_the_words()
     {
-        var (body, memory, _) = await Ask(withProjector: false);
-        Assert.DoesNotContain("image_url", body);
-        var messages = JsonDocument.Parse(body).RootElement.GetProperty("messages");
+        var (brain, http, _, memory) = Make(withProjector: false);
+        await Ask(brain);
+        Assert.DoesNotContain("image_url", http.Body);
+        var messages = JsonDocument.Parse(http.Body).RootElement.GetProperty("messages");
         Assert.Contains("<screen>", messages[messages.GetArrayLength() - 1].GetProperty("content").GetString());
-        Assert.Equal(100, memory);
+        Assert.Equal([100L], memory);
+    }
+
+    [Fact]
+    public async Task Warm_up_loads_the_brain_and_reads_the_screen_without_answering()
+    {
+        var (brain, http, launcher, _) = Make(withProjector: true);
+        await brain.WarmUpAsync([], Wallpaper, CancellationToken.None);
+
+        Assert.Equal(1, launcher.Launches);
+        var request = JsonDocument.Parse(http.Body).RootElement;
+        Assert.False(request.GetProperty("stream").GetBoolean());
+        Assert.Equal(1, request.GetProperty("max_tokens").GetInt32());
+        Assert.Contains("data:image/jpeg;base64,", http.Body);
+    }
+
+    [Fact]
+    public async Task Warm_up_never_loads_when_memory_is_short()
+    {
+        var (brain, http, launcher, _) = Make(withProjector: true, new MemoryVerdict.Slow("slow"));
+        await brain.WarmUpAsync([], Wallpaper, CancellationToken.None);
+
+        Assert.Equal(0, launcher.Launches);
+        Assert.Equal("", http.Body);
+    }
+
+    [Fact]
+    public async Task The_question_after_a_warm_up_reuses_the_loaded_brain()
+    {
+        var (brain, _, launcher, memory) = Make(withProjector: true);
+        await brain.WarmUpAsync([], Wallpaper, CancellationToken.None);
+        await Ask(brain);
+
+        Assert.Equal(1, launcher.Launches);
+        Assert.Single(memory);
+    }
+}
+
+public class StickyScreenTests
+{
+    private static readonly DateTimeOffset Now = new(2026, 10, 10, 17, 9, 0, TimeSpan.FromHours(5.5));
+    private static ChatMessage A(string t) => new(ChatRole.Assistant, t);
+
+    private static ScreenSnapshot Shot(string words, byte id, string taskbar = "17:09") =>
+        new(Now, "Notes - notepad", "notepad", words, taskbar, [0xFF, 0xD8, id]);
+
+    private static ChatMessage Q(string text, ScreenSnapshot? screen, int minute) =>
+        new(ChatRole.User, text, Screen: screen, AskedAt: Now.AddMinutes(minute));
+
+    [Fact]
+    public void Follow_up_on_an_unchanged_screen_keeps_the_first_question_byte_identical()
+    {
+        var s1 = Shot("hello world", 1);
+        var first = PromptBuilder.Build([Q("what is this?", s1, 0)], s1, Now, vision: true);
+
+        var s2 = Shot("hello world", 2, taskbar: "17:10"); // looked again a minute later: only the clock changed
+        var second = PromptBuilder.Build([Q("what is this?", s1, 0), A("a note"), Q("and the title?", s2, 1)], s2, Now.AddMinutes(1), vision: true);
+
+        Assert.Equal(first[1].Content, second[1].Content);
+        Assert.Same(first[1].ImageJpeg, second[1].ImageJpeg);
+        Assert.Null(second[^1].ImageJpeg);
+        Assert.StartsWith("[Screen: unchanged", second[^1].Content);
+        Assert.EndsWith("and the title?", second[^1].Content);
+    }
+
+    [Fact]
+    public void A_changed_screen_moves_the_picture_to_the_newest_question()
+    {
+        var s1 = Shot("page one", 1);
+        var s2 = Shot("page two", 2);
+        var msgs = PromptBuilder.Build([Q("q1", s1, 0), A("a1"), Q("q2", s2, 1)], s2, Now, vision: true);
+
+        Assert.Null(msgs[1].ImageJpeg);
+        Assert.StartsWith("[Screen: an earlier screen", msgs[1].Content);
+        Assert.DoesNotContain("page one", string.Concat(msgs.Select(m => m.Content)));
+        Assert.Same(s2.Screenshot, msgs[^1].ImageJpeg);
+        Assert.Contains("page two", msgs[^1].Content);
+    }
+
+    [Fact]
+    public void Eye_off_hides_every_earlier_screen_too()
+    {
+        var s1 = Shot("private stuff", 1);
+        var msgs = PromptBuilder.Build([Q("q1", s1, 0), A("a1"), Q("q2", null, 1)], null, Now, vision: true);
+
+        Assert.All(msgs, m => Assert.Null(m.ImageJpeg));
+        Assert.DoesNotContain("private stuff", string.Concat(msgs.Select(m => m.Content)));
+        Assert.StartsWith("[Screen: not shared", msgs[^1].Content);
+    }
+
+    [Fact]
+    public void Warm_up_prompt_is_a_prefix_of_the_real_question()
+    {
+        var s = Shot("code", 1);
+        var warm = PromptBuilder.Build([new ChatMessage(ChatRole.User, "")], s, Now, vision: true);
+        var real = PromptBuilder.Build([Q("why does this fail?", s, 0)], s, Now, vision: true);
+
+        Assert.Equal(warm[0].Content, real[0].Content);
+        Assert.Same(warm[^1].ImageJpeg, real[^1].ImageJpeg);
+        Assert.StartsWith(warm[^1].Content, real[^1].Content);
+    }
+
+    [Fact]
+    public void Screen_part_comes_before_the_clock_so_a_new_minute_keeps_the_screen_cached()
+    {
+        var s = Shot("code", 1);
+        var content = PromptBuilder.Build([Q("q", s, 0)], s, Now, vision: true)[^1].Content;
+        Assert.True(content.IndexOf("</screen>", StringComparison.Ordinal) < content.IndexOf("[Now:", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Clock_ticks_are_not_a_screen_change_but_new_words_are()
+    {
+        Assert.True(Shot("x", 1).SameScreen(Shot("x", 2, taskbar: "5:10 PM")));
+        Assert.False(Shot("x", 1).SameScreen(Shot("y", 1)));
+        Assert.False(Shot("x", 1).SameScreen(Shot("x", 1) with { WindowTitle = "Other" }));
     }
 }

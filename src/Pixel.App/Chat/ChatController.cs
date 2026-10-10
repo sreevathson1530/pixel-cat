@@ -26,6 +26,7 @@ internal sealed class ChatController
     private ChatWindow? _window;
     private Task? _init;
     private CancellationTokenSource? _turn;
+    private CancellationTokenSource? _warmUp;
     private Task<ScreenSnapshot?> _screen = Task.FromResult<ScreenSnapshot?>(null);
     private readonly Dictionary<string, TaskCompletionSource<bool>> _pendingConfirms = [];
     private int _confirmSeq;
@@ -154,6 +155,26 @@ internal sealed class ChatController
         var screen = await _screen;
         _window.Post(new { type = "context", text = DescribeContext(screen) });
         _window.Post(new { type = "status", text = "here for you", busy = false });
+        _ = WarmUpAsync();
+    }
+
+    /// <summary>Lets the brain load and read the screen while you type, so the answer starts sooner.</summary>
+    private async Task WarmUpAsync()
+    {
+        _warmUp?.Cancel();
+        var cts = _warmUp = new CancellationTokenSource();
+        try
+        {
+            var screen = await _screen;
+            await _brain.WarmUpAsync(_conversation.ToArray(), screen, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception e)
+        {
+            Log.Error("brain warm-up", e);
+        }
     }
 
     /// <summary>Opens the panel (if needed) and asks <paramref name="text"/> as if typed.</summary>
@@ -171,10 +192,12 @@ internal sealed class ChatController
     {
         var s = await _screen;
         if (s is not null && DateTimeOffset.Now - s.At < ScreenFreshness) return s;
-        _screen = SafeSnapshot();
-        s = await _screen;
-        _window?.Post(new { type = "context", text = DescribeContext(s) });
-        return s;
+        var fresh = await SafeSnapshot();
+        // Nothing changed: keep the earlier look — same screenshot bytes, which the brain may already have read.
+        if (fresh is not null && s is not null && fresh.SameScreen(s)) fresh = s with { At = fresh.At };
+        _screen = Task.FromResult(fresh);
+        _window?.Post(new { type = "context", text = DescribeContext(fresh) });
+        return fresh;
     }
 
     private async Task<ScreenSnapshot?> SafeSnapshot()
@@ -192,6 +215,7 @@ internal sealed class ChatController
 
     public void Hide()
     {
+        _warmUp?.Cancel();
         _host.Cat.HoldStill = false;
         if (_window is null || !_window.IsVisible) return;
         _window.Hide();
@@ -228,6 +252,7 @@ internal sealed class ChatController
             _historyId = null;
         }
         _turn?.Cancel();
+        _warmUp?.Cancel();
         ReleasePendingConfirms();
         if (_conversation.Count > 0) ConversationEnded?.Invoke(_conversation.ToArray());
         _conversation.Clear();
@@ -289,6 +314,7 @@ internal sealed class ChatController
             case "newChat":
                 EndConversation();
                 _screen = SafeSnapshot();
+                _ = WarmUpAsync();
                 break;
             case "drag":
                 _window!.BeginDrag();
@@ -319,7 +345,7 @@ internal sealed class ChatController
             if (_host.Dispatcher.CheckAccess()) ReleasePendingConfirms();
             else _host.Dispatcher.BeginInvoke(ReleasePendingConfirms);
         });
-        _conversation.Add(new ChatMessage(ChatRole.User, text));
+        _conversation.Add(new ChatMessage(ChatRole.User, text, Screen: screen, AskedAt: DateTimeOffset.Now));
         Remember(ChatRole.User, text);
         SetCatChat(ChatState.Thinking);
         var answer = new System.Text.StringBuilder();
