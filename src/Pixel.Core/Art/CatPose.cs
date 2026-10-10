@@ -1,6 +1,9 @@
 namespace Pixel.Core.Art;
 
-public enum BodyShape { Stand, Sit, Loaf, Stretch, Jump, Fall, Dangle, Crouch, Peek, None }
+public enum BodyShape { Stand, Sit, Loaf, Stretch, Jump, Fall, Dangle, Crouch, Peek, Front, None }
+
+/// <summary>Where the laptop is in the "pull it out of the pocket" routine (front-facing pose only).</summary>
+public enum LaptopStage { None, PawInPocket, Emerging, HeldUp, Closed, Half, Open }
 
 public enum EyeState { Open, Closed, Happy, Half, Wide }
 
@@ -19,8 +22,6 @@ public enum Effect
     Hearts = 1 << 3,
     Sparkles = 1 << 4,
     Steam = 1 << 5,
-    Laptop = 1 << 6,
-    Keyboard = 1 << 7,
     Paper = 1 << 8,
     Poof = 1 << 9,
     Dots = 1 << 10,
@@ -43,7 +44,8 @@ public sealed record CatPose(
     Effect Effect = Effect.None,
     int EffectFrame = 0,
     int BodyDx = 0,
-    int BodyDy = 0);
+    int BodyDy = 0,
+    LaptopStage Laptop = LaptopStage.None);
 
 /// <summary>Per-frame render options that come from the live world rather than the animation.</summary>
 public readonly record struct RenderOptions(

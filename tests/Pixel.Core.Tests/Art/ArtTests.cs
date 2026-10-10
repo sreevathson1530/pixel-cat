@@ -112,3 +112,58 @@ public class AnimationsTests
             Assert.Equal(CatRenderer.Width * CatRenderer.Height, CatRenderer.Render(f.Pose, p).Length);
     }
 }
+
+public class LaptopAnimationTests
+{
+    private const uint LaptopLid = 0xFF4A5164; // lid colour (FxLaptopDark)
+
+    private static double LidCenterX(uint[] px)
+    {
+        var xs = Enumerable.Range(0, px.Length).Where(i => px[i] == LaptopLid).Select(i => i % CatRenderer.Width).ToList();
+        Assert.NotEmpty(xs);
+        return (xs.Min() + xs.Max()) / 2.0;
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Typing_laptop_is_centred_in_front_of_the_cat(bool facingLeft)
+    {
+        var frame = Animations.Get(AnimationId.Working).Frames[0];
+        Assert.Equal(BodyShape.Front, frame.Pose.Body);
+        var px = CatRenderer.Render(frame.Pose, Palette.Named("black"), new RenderOptions(FacingLeft: facingLeft));
+        Assert.InRange(LidCenterX(px), CatRenderer.Width / 2.0 - 1.5, CatRenderer.Width / 2.0 + 1.5);
+    }
+
+    [Theory]
+    [InlineData(AnimationId.Working)]
+    [InlineData(AnimationId.Knead)]
+    [InlineData(AnimationId.Overheat)]
+    public void Typing_animations_type_on_an_open_laptop(AnimationId id) =>
+        Assert.All(Animations.Get(id).Frames, f => Assert.Equal(LaptopStage.Open, f.Pose.Laptop));
+
+    [Fact]
+    public void Laptop_comes_out_of_the_pocket_and_opens()
+    {
+        var a = Animations.Get(AnimationId.LaptopOut);
+        Assert.False(a.Loop);
+        Assert.Equal(LaptopStage.PawInPocket, a.Frames[0].Pose.Laptop);
+        Assert.Equal(LaptopStage.Open, a.Frames[^1].Pose.Laptop);
+    }
+
+    [Fact]
+    public void Laptop_goes_back_into_the_pocket()
+    {
+        var a = Animations.Get(AnimationId.LaptopAway);
+        Assert.False(a.Loop);
+        Assert.Equal(LaptopStage.Open, a.Frames[0].Pose.Laptop);
+        Assert.Equal(LaptopStage.None, a.Frames[^1].Pose.Laptop);
+    }
+
+    [Fact]
+    public void Paws_move_while_typing()
+    {
+        var frames = Animations.Get(AnimationId.Working).Frames;
+        Assert.True(frames.Select(f => f.Pose.Paws).Distinct().Count() >= 2);
+    }
+}

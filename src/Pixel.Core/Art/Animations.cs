@@ -4,6 +4,7 @@ public enum AnimationId
 {
     Idle, Walk, Run, Jump, Fall, Sleep, Groom, Stretch, Purr, Crouch, Knead, Overheat, Paper,
     Working, Celebrate, Wave, Alert, Confused, Peek, Dangle, PoofOut, PoofIn, Talk, Thinking,
+    LaptopOut, LaptopIdle, LaptopAway,
 }
 
 public sealed record Frame(CatPose Pose, int Ms);
@@ -100,12 +101,38 @@ public static class Animations
             new(crouch with { LegPhase = 0 }, 140),
             new(crouch with { LegPhase = 3, Tail = 1 }, 140));
 
-        var knead = Sit with { Eyes = EyeState.Half, Effect = Effect.Keyboard };
+        // Typing on the laptop from the pocket (you typing, or an AI tool working).
+        var front = new CatPose(BodyShape.Front);
+        var typing = front with { Laptop = LaptopStage.Open, Eyes = EyeState.Half };
         Add(AnimationId.Knead, true,
-            new(knead with { Paws = PawState.LeftUp }, 170),
-            new(knead with { Paws = PawState.RightUp }, 170));
+            new(typing with { Paws = PawState.LeftUp, EffectFrame = 0 }, 160),
+            new(typing with { Paws = PawState.RightUp, EffectFrame = 1 }, 160),
+            new(typing with { Paws = PawState.LeftUp, EffectFrame = 2, Tail = 1 }, 160),
+            new(typing with { Paws = PawState.RightUp, EffectFrame = 3, Tail = 1 }, 160));
 
-        var hot = Sit with { Eyes = EyeState.Wide, Mouth = MouthState.Open, Effect = Effect.Keyboard | Effect.Steam };
+        Add(AnimationId.LaptopOut, false,
+            new(front with { Laptop = LaptopStage.PawInPocket, Eyes = EyeState.Open }, 240),
+            new(front with { Laptop = LaptopStage.Emerging, Eyes = EyeState.Wide }, 220),
+            new(front with { Laptop = LaptopStage.HeldUp, Eyes = EyeState.Happy, Mouth = MouthState.Open }, 260),
+            new(front with { Laptop = LaptopStage.Closed }, 160),
+            new(front with { Laptop = LaptopStage.Half }, 140),
+            new(typing, 140));
+
+        Add(AnimationId.LaptopIdle, true,
+            new(typing with { Eyes = EyeState.Open }, 1600),
+            new(typing with { Eyes = EyeState.Closed }, 120),
+            new(typing with { Eyes = EyeState.Open, Tail = 2 }, 900));
+
+        Add(AnimationId.LaptopAway, false,
+            new(typing with { Eyes = EyeState.Open }, 120),
+            new(front with { Laptop = LaptopStage.Half }, 120),
+            new(front with { Laptop = LaptopStage.Closed }, 140),
+            new(front with { Laptop = LaptopStage.HeldUp, Eyes = EyeState.Happy }, 200),
+            new(front with { Laptop = LaptopStage.Emerging }, 180),
+            new(front with { Laptop = LaptopStage.PawInPocket, Eyes = EyeState.Happy }, 180),
+            new(front, 140));
+
+        var hot = typing with { Eyes = EyeState.Wide, Mouth = MouthState.Open, Effect = Effect.Steam };
         Add(AnimationId.Overheat, true,
             new(hot with { Paws = PawState.LeftUp, EffectFrame = 0 }, 90),
             new(hot with { Paws = PawState.RightUp, EffectFrame = 1, BodyDx = 1 }, 90),
@@ -119,7 +146,7 @@ public static class Animations
             new(paper with { EffectFrame = 2, Paws = PawState.LeftUp }, 140),
             new(paper with { EffectFrame = 3 }, 140));
 
-        var work = Sit with { Eyes = EyeState.Half, Effect = Effect.Laptop };
+        var work = typing;
         Add(AnimationId.Working, true,
             new(work with { Paws = PawState.LeftUp, EffectFrame = 0 }, 150),
             new(work with { Paws = PawState.RightUp, EffectFrame = 1 }, 150),

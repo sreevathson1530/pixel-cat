@@ -12,6 +12,12 @@ public sealed class PetDirector(MotionController motion, Roamer roamer)
     private const double CrouchBeforePounce = 0.6;
     private const double PounceReach = 250;
 
+    /// <summary>How long the laptop stays out after typing pauses, so slow typing doesn't make it pop in and out.</summary>
+    public const double LaptopGraceSeconds = 2.5;
+
+    private bool _laptopOut;
+    private double _laptopIntroUntil, _laptopGraceUntil, _laptopAwayUntil = double.NegativeInfinity;
+
     private RoamIntent? _intent;
     private double _intentUntil;
     private RoamAction? _lastRoam;
@@ -42,7 +48,9 @@ public sealed class PetDirector(MotionController motion, Roamer roamer)
     public void Tick(double now, double dt, PetSignals s, IReadOnlyList<Platform> platforms, double userIdleSeconds)
     {
         var activity = ResolveHunt(BehaviourSelector.Select(s), now);
-        if (activity != Activity.Roam) _intent = null;
+        var laptopActivity = activity is Activity.Knead or Activity.AgentWorking or Activity.Overheat;
+        var laptopPhase = LaptopPhase(activity, laptopActivity, now);
+        if (activity != Activity.Roam || laptopPhase is not null) _intent = null;
         Activity = activity;
 
         var anim = activity switch
@@ -62,6 +70,7 @@ public sealed class PetDirector(MotionController motion, Roamer roamer)
             Activity.Purr => AnimationId.Purr,
             Activity.Knead => AnimationId.Knead,
             Activity.Paper => AnimationId.Paper,
+            _ when laptopPhase is { } phase => phase,
             _ when _dashing => AnimationId.Run,
             _ => Roam(now, platforms, userIdleSeconds),
         };
@@ -96,7 +105,8 @@ public sealed class PetDirector(MotionController motion, Roamer roamer)
             }
         }
 
-        if (activity is not (Activity.Roam or Activity.Dangle) && !goingToAttention) motion.Stop();
+        if (laptopActivity && now < _laptopIntroUntil) anim = AnimationId.LaptopOut;
+        if ((activity is not (Activity.Roam or Activity.Dangle) || laptopPhase is not null) && !goingToAttention) motion.Stop();
         if (activity == Activity.Hunt && _pounceAt is { } at && now >= at)
         {
             if (motion.FreeRoam)
@@ -123,6 +133,35 @@ public sealed class PetDirector(MotionController motion, Roamer roamer)
             Animation = anim;
             AnimationStart = now;
         }
+    }
+
+    /// <summary>
+    /// The laptop routine around typing / AI work: it comes out of the pocket when work starts, stays out through
+    /// short pauses, and goes back in before the cat wanders off. Returns the animation that overrides roaming.
+    /// </summary>
+    private AnimationId? LaptopPhase(Activity activity, bool laptopActivity, double now)
+    {
+        if (laptopActivity)
+        {
+            if (!_laptopOut && now >= _laptopAwayUntil)
+                _laptopIntroUntil = now + Animations.Get(AnimationId.LaptopOut).TotalMs / 1000.0;
+            _laptopOut = true;
+            _laptopGraceUntil = now + LaptopGraceSeconds;
+            _laptopAwayUntil = double.NegativeInfinity;
+            return null;
+        }
+        if (_laptopOut)
+        {
+            if (activity != Activity.Roam)
+            {
+                _laptopOut = false; // something else took over (chat, alert, drag…) — just drop the routine
+                return null;
+            }
+            if (now < _laptopGraceUntil) return AnimationId.LaptopIdle;
+            _laptopOut = false;
+            _laptopAwayUntil = now + Animations.Get(AnimationId.LaptopAway).TotalMs / 1000.0;
+        }
+        return activity == Activity.Roam && now < _laptopAwayUntil ? AnimationId.LaptopAway : null;
     }
 
     /// <summary>A hunt is a short sequence: crouch, then pounce — it finishes even if the mouse stops.</summary>

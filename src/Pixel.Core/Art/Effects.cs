@@ -21,25 +21,7 @@ internal static class Effects
         var front = new PixelCanvas(W, H);
         var behind = new PixelCanvas(W, H);
 
-        if (p.Effect.HasFlag(Effect.Keyboard))
-        {
-            for (var x = 23; x <= 41; x++)
-            {
-                behind.Set(x, 37, (x / 2 % 2 == 0) ? Ix.FxKey : Ix.FxLaptop);
-                behind.Set(x, 38, Ix.FxLaptopDark);
-            }
-        }
-
-        if (p.Effect.HasFlag(Effect.Laptop))
-        {
-            front.Rect(32, 27, 42, 35, Ix.FxLaptopDark);
-            front.Rect(33, 28, 41, 34, Ix.FxScreen);
-            int[][] lines = [[5, 3, 6], [6, 4, 2], [3, 6, 4], [4, 2, 5]];
-            var l = lines[((f % 4) + 4) % 4];
-            for (var i = 0; i < 3; i++) front.Rect(34, 29 + i * 2, 33 + l[i], 29 + i * 2, Ix.FxCode);
-            front.Rect(31, 36, 45, 37, Ix.FxLaptop);
-            front.Rect(31, 38, 45, 38, Ix.FxLaptopDark);
-        }
+        if (p.Body == BodyShape.Front && p.Laptop != LaptopStage.None) Laptop(front, p, f);
 
         if (p.Effect.HasFlag(Effect.Paper))
         {
@@ -57,6 +39,83 @@ internal static class Effects
         {
             if (front.Px[i] != Ix.Clear) c.Px[i] = front.Px[i];
             else if (behind.Px[i] != Ix.Clear && c.Px[i] == Ix.Clear) c.Px[i] = behind.Px[i];
+        }
+    }
+
+    /// <summary>
+    /// The laptop routine, centred on the cat (x = 24): reach into the pocket, pull the laptop out, set it down,
+    /// open the lid, type. Paws are drawn here too so they sit on top of the laptop.
+    /// </summary>
+    private static void Laptop(PixelCanvas l, CatPose p, int f)
+    {
+        int ox = p.BodyDx, oy = p.BodyDy;
+        void Rect(int x0, int y0, int x1, int y1, byte v) => l.Rect(x0 + ox, y0 + oy, x1 + ox, y1 + oy, v);
+        void Paw(int x, int y)
+        {
+            Rect(x, y, x + 2, y + 1, Ix.Fur);
+            Rect(x, y, x + 2, y, Ix.Highlight);
+        }
+
+        switch (p.Laptop)
+        {
+            case LaptopStage.PawInPocket:
+                Paw(25, 30); // dipping into the pocket
+                l.Set(29 + ox, 28 + oy, Ix.FxYellow);
+                l.Set(19 + ox, 27 + oy, Ix.FxYellow);
+                break;
+
+            case LaptopStage.Emerging:
+                Rect(20, 25, 28, 31, Ix.FxLaptop); // half out of the pocket, still closed
+                Rect(20, 25, 28, 25, Ix.FxLaptopDark);
+                Paw(23, 23);
+                l.Set(30 + ox, 24 + oy, Ix.FxYellow);
+                break;
+
+            case LaptopStage.HeldUp:
+                Rect(16, 28, 32, 31, Ix.FxLaptop); // held out in front with both paws
+                Rect(16, 31, 32, 31, Ix.FxLaptopDark);
+                Paw(13, 28);
+                Paw(33, 28);
+                break;
+
+            case LaptopStage.Closed:
+                Rect(13, 36, 35, 36, Ix.FxLaptopDark); // closed lid resting on the deck
+                Rect(13, 37, 35, 37, Ix.FxLaptop);
+                Rect(13, 38, 35, 38, Ix.FxLaptopDark);
+                Paw(18, 34);
+                Paw(28, 34);
+                break;
+
+            case LaptopStage.Half:
+                Rect(13, 37, 35, 37, Ix.FxLaptop);
+                Rect(13, 38, 35, 38, Ix.FxLaptopDark);
+                Rect(15, 31, 33, 36, Ix.FxLaptop); // lid swinging up
+                Rect(15, 31, 33, 31, Ix.FxLaptopDark);
+                Paw(16, 35);
+                Paw(30, 35);
+                break;
+
+            case LaptopStage.Open:
+            {
+                Rect(13, 37, 35, 37, Ix.FxLaptop); // keyboard deck
+                Rect(13, 38, 35, 38, Ix.FxLaptopDark);
+                Rect(15, 26, 33, 36, Ix.FxLaptop); // silver back of the lid, facing us — dark paws show up on it
+                Rect(15, 27, 15, 36, Ix.FxLaptopDark);
+                Rect(33, 27, 33, 36, Ix.FxLaptopDark);
+                for (var x = 16; x <= 32; x++) // screen light spilling over the top edge
+                    l.Set(x + ox, 26 + oy, (x + f) % 3 == 0 ? Ix.FxCode : Ix.FxScreen);
+                l.Set(22 + ox, 29 + oy, Ix.FxWhite); // paw-print logo
+                l.Set(24 + ox, 28 + oy, Ix.FxWhite);
+                l.Set(26 + ox, 29 + oy, Ix.FxWhite);
+                Rect(23, 30, 25, 31, Ix.FxWhite);
+
+                // Typing: paws on the keys, one hops up at a time.
+                var leftUp = p.Paws == PawState.LeftUp;
+                var rightUp = p.Paws == PawState.RightUp;
+                Paw(18, leftUp ? 33 : 35);
+                Paw(28, rightUp ? 33 : 35);
+                break;
+            }
         }
     }
 

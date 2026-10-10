@@ -68,6 +68,7 @@ public static class CatRenderer
         BodyShape.Fall => Fall(c, p),
         BodyShape.Dangle => Dangle(c, p),
         BodyShape.Peek => Peek(c, p),
+        BodyShape.Front => Front(c, p),
         _ => null,
     };
 
@@ -238,6 +239,41 @@ public static class CatRenderer
 
         var hx = 17 + ox + p.HeadDx;
         var hy = 3 + oy + p.HeadDy;
+        c.Blit(Head, hx, hy);
+        return (hx, hy);
+    }
+
+    /// <summary>
+    /// Sitting and facing you, symmetric around the canvas centre — so a laptop placed in front lines up exactly.
+    /// Has a little pocket on the belly, which is where the laptop lives.
+    /// </summary>
+    private static (int, int) Front(PixelCanvas c, CatPose p)
+    {
+        int ox = p.BodyDx, oy = p.BodyDy;
+        (int X, int Y)[] tail = p.Tail switch
+        {
+            1 => [(29, 36), (34, 37), (38, 35), (39, 31), (38, 28)],
+            2 => [(29, 36), (34, 37), (37, 36), (39, 33), (40, 30)],
+            _ => [(29, 36), (34, 37), (37, 35), (38, 31), (36, 28)],
+        };
+        c.Path(Ix.Fur, ox, oy, tail);
+        c.Ellipse(24 + ox, 31.5 + oy, 7, 7, Ix.Fur);
+        c.Ellipse(19.5 + ox, 37.8 + oy, 2.6, 1.3, Ix.Fur);
+        c.Ellipse(28.5 + ox, 37.8 + oy, 2.6, 1.3, Ix.Fur);
+
+        // The magic pocket: a little stitched pouch on the belly.
+        c.Set(21 + ox, 31 + oy, Ix.Line);
+        for (var x = 22; x <= 26; x++) c.Set(x + ox, 32 + oy, Ix.Line);
+        c.Set(27 + ox, 31 + oy, Ix.Line);
+
+        if (p.Laptop == LaptopStage.None)
+        {
+            c.Rect(20 + ox, 35 + oy, 22 + ox, 37 + oy, Ix.Fur);
+            c.Rect(26 + ox, 35 + oy, 28 + ox, 37 + oy, Ix.Fur);
+        }
+
+        var hx = 17 + ox + p.HeadDx;
+        var hy = 13 + oy + p.HeadDy;
         c.Blit(Head, hx, hy);
         return (hx, hy);
     }

@@ -142,8 +142,10 @@ public class PetDirectorTests
         var now = 0.0;
         m.WalkTo(100);
         Tick(d, ref now, new PetSignals { Typing = true }, 0.5);
-        Assert.Equal(AnimationId.Knead, d.Animation);
+        Assert.Equal(AnimationId.LaptopOut, d.Animation); // laptop comes out of the pocket first
         Assert.Equal(MotionMode.Idle, m.Mode);
+        Tick(d, ref now, new PetSignals { Typing = true }, 1.0);
+        Assert.Equal(AnimationId.Knead, d.Animation);
     }
 
     [Fact]
@@ -152,8 +154,9 @@ public class PetDirectorTests
         var (d, _) = Make();
         var now = 0.0;
         Tick(d, ref now, new PetSignals { Typing = true, Overheated = true });
-        Assert.Equal(AnimationId.Overheat, d.Animation);
         Assert.True(d.Overheated);
+        Tick(d, ref now, new PetSignals { Typing = true, Overheated = true }, 1.5);
+        Assert.Equal(AnimationId.Overheat, d.Animation);
     }
 
     [Fact]
@@ -257,5 +260,47 @@ public class FreeRoamBehaviourTests
         Assert.InRange(m.Body.X, 860, 940);
         Assert.InRange(m.Body.Y, 220, 300);
         Assert.Equal(AnimationId.Alert, d.Animation);
+    }
+}
+
+public class LaptopDirectorTests
+{
+    [Fact]
+    public void Typing_pulls_the_laptop_out_first_then_types_then_puts_it_away()
+    {
+        var m = new MotionController(new Bounds(0, 0, 1280, 800)) { FreeRoam = true, BodyHeight = 120 };
+        m.Place(640, 500);
+        var d = new PetDirector(m, new Roamer(new Random(5)));
+        var now = 0.0;
+        void Run(double seconds, PetSignals s) { for (var end = now + seconds; now < end; now += 1 / 30.0) d.Tick(now, 1 / 30.0, s, [], 0); }
+
+        Run(0.1, new PetSignals { Typing = true });
+        Assert.Equal(AnimationId.LaptopOut, d.Animation);
+
+        Run(Animations.Get(AnimationId.LaptopOut).TotalMs / 1000.0 + 0.1, new PetSignals { Typing = true });
+        Assert.Equal(AnimationId.Knead, d.Animation);
+
+        Run(0.1, new PetSignals());
+        Assert.Equal(AnimationId.LaptopIdle, d.Animation); // a pause between keystrokes keeps the laptop out
+
+        Run(PetDirector.LaptopGraceSeconds + 0.1, new PetSignals());
+        Assert.Equal(AnimationId.LaptopAway, d.Animation);
+
+        Run(Animations.Get(AnimationId.LaptopAway).TotalMs / 1000.0 + 0.2, new PetSignals());
+        Assert.NotEqual(AnimationId.LaptopAway, d.Animation);
+    }
+
+    [Fact]
+    public void Switching_between_typing_and_ai_work_keeps_the_laptop_out()
+    {
+        var m = new MotionController(new Bounds(0, 0, 1280, 800)) { FreeRoam = true, BodyHeight = 120 };
+        m.Place(640, 500);
+        var d = new PetDirector(m, new Roamer(new Random(5)));
+        var now = 0.0;
+        void Run(double seconds, PetSignals s) { for (var end = now + seconds; now < end; now += 1 / 30.0) d.Tick(now, 1 / 30.0, s, [], 0); }
+
+        Run(2, new PetSignals { Typing = true });
+        Run(0.1, new PetSignals { Agent = AgentState.Working });
+        Assert.Equal(AnimationId.Working, d.Animation);
     }
 }
