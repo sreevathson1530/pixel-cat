@@ -115,24 +115,51 @@ public class AnimationsTests
 
 public class LaptopAnimationTests
 {
-    private const uint LaptopLid = 0xFF4A5164; // lid colour (FxLaptopDark)
+    private const uint Silver = 0xFFA3ACBE;   // laptop body (FxLaptop)
+    private const uint DarkEdge = 0xFF4A5164; // laptop edges (FxLaptopDark)
 
-    private static double LidCenterX(uint[] px)
+    private static List<(int X, int Y)> LaptopPixels(uint[] px) =>
+        Enumerable.Range(0, px.Length).Where(i => px[i] is Silver or DarkEdge)
+            .Select(i => (i % CatRenderer.Width, i / CatRenderer.Width)).ToList();
+
+    private static uint[] TypingFrame(bool facingLeft) =>
+        CatRenderer.Render(Animations.Get(AnimationId.Working).Frames[0].Pose, Palette.Named("black"),
+            new RenderOptions(FacingLeft: facingLeft));
+
+    [Fact]
+    public void Typing_happens_side_on()
     {
-        var xs = Enumerable.Range(0, px.Length).Where(i => px[i] == LaptopLid).Select(i => i % CatRenderer.Width).ToList();
-        Assert.NotEmpty(xs);
-        return (xs.Min() + xs.Max()) / 2.0;
+        Assert.All(Animations.Get(AnimationId.Working).Frames, f => Assert.Equal(BodyShape.Sit, f.Pose.Body));
     }
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void Typing_laptop_is_centred_in_front_of_the_cat(bool facingLeft)
+    public void Laptop_sits_beside_the_cat_in_the_direction_it_faces(bool facingLeft)
     {
-        var frame = Animations.Get(AnimationId.Working).Frames[0];
-        Assert.Equal(BodyShape.Front, frame.Pose.Body);
-        var px = CatRenderer.Render(frame.Pose, Palette.Named("black"), new RenderOptions(FacingLeft: facingLeft));
-        Assert.InRange(LidCenterX(px), CatRenderer.Width / 2.0 - 1.5, CatRenderer.Width / 2.0 + 1.5);
+        var pts = LaptopPixels(TypingFrame(facingLeft));
+        Assert.NotEmpty(pts);
+        if (facingLeft) Assert.All(pts, p => Assert.True(p.X <= CatRenderer.Width - 1 - 27, $"laptop pixel at x={p.X} is behind a left-facing cat"));
+        else Assert.All(pts, p => Assert.True(p.X >= 27, $"laptop pixel at x={p.X} is behind a right-facing cat"));
+    }
+
+    [Fact]
+    public void Laptop_base_touches_the_cat_and_rests_on_the_floor()
+    {
+        var pts = LaptopPixels(TypingFrame(false));
+        var baseRow = pts.Where(p => p.Y == 37).Select(p => p.X).ToList();
+        Assert.NotEmpty(baseRow);
+        Assert.InRange(baseRow.Min(), 29, 33);  // starts right at the cat's chest
+        Assert.True(baseRow.Max() - baseRow.Min() >= 10, "a proper keyboard deck");
+    }
+
+    [Fact]
+    public void Lid_stands_up_at_the_far_end()
+    {
+        var pts = LaptopPixels(TypingFrame(false));
+        var top = pts.Min(p => p.Y);
+        Assert.True(top <= 28, "open lid rises well above the deck");
+        Assert.True(pts.Where(p => p.Y == top).All(p => p.X >= 40), "lid is at the far end of the laptop");
     }
 
     [Theory]
@@ -149,6 +176,7 @@ public class LaptopAnimationTests
         Assert.False(a.Loop);
         Assert.Equal(LaptopStage.PawInPocket, a.Frames[0].Pose.Laptop);
         Assert.Equal(LaptopStage.Open, a.Frames[^1].Pose.Laptop);
+        Assert.All(a.Frames, f => Assert.Equal(BodyShape.Sit, f.Pose.Body));
     }
 
     [Fact]
@@ -165,5 +193,8 @@ public class LaptopAnimationTests
     {
         var frames = Animations.Get(AnimationId.Working).Frames;
         Assert.True(frames.Select(f => f.Pose.Paws).Distinct().Count() >= 2);
+        var a = CatRenderer.Render(frames[0].Pose, Palette.Named("black"));
+        var b = CatRenderer.Render(frames[1].Pose, Palette.Named("black"));
+        Assert.NotEqual(a, b);
     }
 }

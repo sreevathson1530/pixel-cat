@@ -1,8 +1,8 @@
 namespace Pixel.Core.Art;
 
-public enum BodyShape { Stand, Sit, Loaf, Stretch, Jump, Fall, Dangle, Crouch, Peek, Front, None }
+public enum BodyShape { Stand, Sit, Loaf, Stretch, Jump, Fall, Dangle, Crouch, Peek, None }
 
-/// <summary>Where the laptop is in the "pull it out of the pocket" routine (front-facing pose only).</summary>
+/// <summary>Where the laptop is in the "pull it out of the pocket" routine (side-sitting pose).</summary>
 public enum LaptopStage { None, PawInPocket, Emerging, HeldUp, Closed, Half, Open }
 
 public enum EyeState { Open, Closed, Happy, Half, Wide }

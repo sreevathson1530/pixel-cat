@@ -102,7 +102,7 @@ public static class Animations
             new(crouch with { LegPhase = 3, Tail = 1 }, 140));
 
         // Typing on the laptop from the pocket (you typing, or an AI tool working).
-        var front = new CatPose(BodyShape.Front);
+        var front = Sit; // side-on: the laptop sits on the floor beside the cat, in the direction it faces
         var typing = front with { Laptop = LaptopStage.Open, Eyes = EyeState.Half };
         Add(AnimationId.Knead, true,
             new(typing with { Paws = PawState.LeftUp, EffectFrame = 0 }, 160),
