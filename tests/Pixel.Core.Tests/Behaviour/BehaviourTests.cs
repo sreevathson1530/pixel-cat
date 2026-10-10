@@ -222,10 +222,17 @@ public class FreeRoamBehaviourTests
     [Fact]
     public void Walks_go_everywhere_on_screen()
     {
+        // Follow the cat from walk to walk: over time it should reach every part of the screen.
         var r = new Roamer(new Random(11));
         var ctx = new RoamContext(640, 700, Area, [], 0, Staying: false, Last: null, FreeRoam: true);
-        var targets = Enumerable.Range(0, 400).Select(_ => r.Next(ctx))
-            .Where(i => i.Action == RoamAction.Walk).ToList();
+        var targets = new List<RoamIntent>();
+        for (var i = 0; i < 400; i++)
+        {
+            var intent = r.Next(ctx);
+            if (intent.Action != RoamAction.Walk) continue;
+            targets.Add(intent);
+            ctx = ctx with { X = intent.TargetX!.Value, Y = intent.TargetY!.Value };
+        }
 
         Assert.All(targets, t => Assert.NotNull(t.TargetY));
         Assert.Contains(targets, t => t.TargetY < 300);                       // upper part
@@ -302,5 +309,28 @@ public class LaptopDirectorTests
         Run(2, new PetSignals { Typing = true });
         Run(0.1, new PetSignals { Agent = AgentState.Working });
         Assert.Equal(AnimationId.Working, d.Animation);
+    }
+}
+
+
+public class NaturalWalkTests
+{
+    private static readonly Bounds Area = new(0, 0, 1280, 800);
+
+    [Fact]
+    public void Walks_wander_in_gentle_diagonals_not_steep_glides()
+    {
+        // The walk cycle is drawn side-on; steep up/down glides look like floating or hopping.
+        var r = new Roamer(new Random(21));
+        var ctx = new RoamContext(640, 400, Area, [], 0, Staying: false, Last: null, FreeRoam: true);
+        for (var i = 0; i < 300; i++)
+        {
+            var w = r.Next(ctx);
+            if (w.Action != RoamAction.Walk) continue;
+            var dx = Math.Abs(w.TargetX!.Value - ctx.X);
+            var dy = Math.Abs(w.TargetY!.Value - ctx.Y);
+            Assert.True(dy <= dx * Roamer.MaxWalkSlope + 0.001, $"steep walk: dx={dx:0} dy={dy:0}");
+            ctx = ctx with { X = w.TargetX.Value, Y = w.TargetY.Value };
+        }
     }
 }

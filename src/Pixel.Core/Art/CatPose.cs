@@ -28,7 +28,7 @@ public enum Effect
 }
 
 /// <summary>Everything needed to draw one frame of the cat.</summary>
-/// <param name="LegPhase">Walk/run cycle step, 0..3.</param>
+/// <param name="LegPhase">Walk cycle step 0..7; 8..9 are the two gallop frames.</param>
 /// <param name="Tail">Tail sway variant, 0..2.</param>
 /// <param name="EffectFrame">Animation step of <paramref name="Effect"/>.</param>
 /// <param name="BodyDx">Whole-cat horizontal nudge in pixels (wiggles, purr jitter).</param>

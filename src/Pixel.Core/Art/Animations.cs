@@ -53,15 +53,15 @@ public static class Animations
             new(Sit, 1400));
 
         var stand = new CatPose(BodyShape.Stand);
+        // Eight-step walk, 90 ms a step: a stride takes ~0.72 s and covers ~24 DIP at 3× — matched by
+        // MotionController.WalkSpeed so the paws don't slide. Tail sways slowly, a step behind the legs.
+        int[] tailSway = [0, 0, 1, 1, 0, 0, 2, 2];
         Add(AnimationId.Walk, true,
-            new(stand with { LegPhase = 0, Tail = 0 }, 130),
-            new(stand with { LegPhase = 1, Tail = 1 }, 130),
-            new(stand with { LegPhase = 2, Tail = 0 }, 130),
-            new(stand with { LegPhase = 3, Tail = 2 }, 130));
+            Enumerable.Range(0, 8).Select(i => new Frame(stand with { LegPhase = i, Tail = tailSway[i] }, 90)).ToArray());
 
         Add(AnimationId.Run, true,
-            new(stand with { LegPhase = 4, Tail = 2, Eyes = EyeState.Wide }, 90),
-            new(stand with { LegPhase = 5, Tail = 1, Eyes = EyeState.Wide }, 90));
+            new(stand with { LegPhase = 8, Tail = 2, Eyes = EyeState.Wide }, 90),
+            new(stand with { LegPhase = 9, Tail = 1, Eyes = EyeState.Wide }, 90));
 
         Add(AnimationId.Jump, true, new Frame(new CatPose(BodyShape.Jump, Eyes: EyeState.Wide), 100));
         Add(AnimationId.Fall, true, new Frame(new CatPose(BodyShape.Fall, Eyes: EyeState.Wide, Mouth: MouthState.Open), 100));

@@ -33,7 +33,7 @@ public sealed class MotionController(Bounds area)
     public const double HalfWidth = 24;
     public const double FreePounceReach = 260;
     public const double Gravity = 2600;
-    public const double WalkSpeed = 70;
+    public const double WalkSpeed = 66; // matches the 8-step walk cycle so paws don't slide
     public const double RunSpeed = 260;
     public const double MaxJumpHeight = 450;
     private const double SnapTolerance = 14;

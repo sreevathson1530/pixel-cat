@@ -198,3 +198,52 @@ public class LaptopAnimationTests
         Assert.NotEqual(a, b);
     }
 }
+
+
+public class WalkCycleTests
+{
+    private static uint[] Render(Frame f) => CatRenderer.Render(f.Pose, Palette.Named("black"));
+
+    private static int TopRow(uint[] px) =>
+        Enumerable.Range(0, px.Length).Where(i => px[i] >> 24 != 0).Min(i => i / CatRenderer.Width);
+
+    /// <summary>Separate groups of opaque pixels on a row (feet touching the ground).</summary>
+    private static int ContactsOnRow(uint[] px, int y)
+    {
+        var count = 0;
+        var inside = false;
+        for (var x = 0; x < CatRenderer.Width; x++)
+        {
+            var on = px[y * CatRenderer.Width + x] >> 24 != 0;
+            if (on && !inside) count++;
+            inside = on;
+        }
+        return count;
+    }
+
+    [Fact]
+    public void Walk_is_a_smooth_eight_frame_cycle() =>
+        Assert.Equal(8, Animations.Get(AnimationId.Walk).Frames.Count);
+
+    [Fact]
+    public void Body_stays_level_while_walking()
+    {
+        // No bobbing: the top of the head is at the same height in every frame (bobbing reads as hopping).
+        var tops = Animations.Get(AnimationId.Walk).Frames.Select(f => TopRow(Render(f))).Distinct();
+        Assert.Single(tops);
+    }
+
+    [Fact]
+    public void At_least_two_paws_are_on_the_ground_in_every_frame()
+    {
+        foreach (var f in Animations.Get(AnimationId.Walk).Frames)
+            Assert.True(ContactsOnRow(Render(f), 38) >= 2, $"frame with leg phase {f.Pose.LegPhase} looks airborne");
+    }
+
+    [Fact]
+    public void Legs_actually_move_through_the_cycle()
+    {
+        var frames = Animations.Get(AnimationId.Walk).Frames.Select(Render).ToList();
+        for (var i = 1; i < frames.Count; i++) Assert.NotEqual(frames[i - 1], frames[i]);
+    }
+}

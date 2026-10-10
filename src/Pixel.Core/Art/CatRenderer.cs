@@ -71,28 +71,43 @@ public static class CatRenderer
         _ => null,
     };
 
+    // Walk cycle (8 phases): where each paw sits relative to its hip/shoulder, and how high it is lifted.
+    // Stance pushes the paw back steadily; the swing brings it forward lifted. Legs follow the cat's
+    // lateral sequence (back-left, front-left, back-right, front-right), a quarter cycle apart.
+    private static readonly int[] StrideDx = [4, 2, 0, -2, -4, -2, 1, 3];
+    private static readonly int[] StrideLift = [0, 0, 0, 0, 0, 1, 2, 1];
+
+    /// <summary>Standing/walking (LegPhase 0–7) or galloping (LegPhase 8–9). The body stays level while walking.</summary>
     private static (int, int) Stand(PixelCanvas c, CatPose p)
     {
         int ox = p.BodyDx, oy = p.BodyDy;
-        // back-near, back-far, front-near, front-far x offsets, near/far lift
-        var (bn, bf, fn, ff, liftN, liftF) = p.LegPhase switch
+        var gallop = p.LegPhase >= 8;
+        var bob = p.LegPhase == 9 ? -1 : 0; // only the run bounces
+
+        void Leg(int hipX, int phaseOffset, bool front, byte shade)
         {
-            0 => (-1, 1, 1, -1, 0, 0),
-            1 => (0, 0, 0, 0, 1, 0),
-            2 => (1, -1, -1, 1, 0, 0),
-            3 => (0, 0, 0, 0, 0, 1),
-            4 => (-3, -2, 3, 2, 1, 1), // gallop: stretched
-            5 => (2, 1, -2, -1, 0, 0), // gallop: gathered
-            _ => (0, 0, 0, 0, 0, 0),
-        };
-        var bob = p.LegPhase is 1 or 3 or 5 ? -1 : 0;
+            int dx, lift;
+            if (gallop)
+            {
+                var stretched = p.LegPhase == 8;
+                dx = (front ? 1 : -1) * (stretched ? 4 : -3);
+                lift = stretched ? 1 : 0;
+            }
+            else
+            {
+                var k = (p.LegPhase + phaseOffset) % 8;
+                dx = StrideDx[k];
+                lift = StrideLift[k];
+            }
+            c.Thick(hipX + ox, 31 + oy + bob, hipX + dx + ox, 37 - lift + oy, shade);
+        }
 
         c.Path(Ix.Fur, ox, oy + bob, TailStand(p.Tail));
-        c.Rect(15 + bf + ox, 32 + oy, 16 + bf + ox, 38 - liftF + oy, Ix.Shade);
-        c.Rect(30 + ff + ox, 32 + oy, 31 + ff + ox, 38 - liftF + oy, Ix.Shade);
+        Leg(15, 4, front: false, Ix.Shade); // far back
+        Leg(30, 6, front: true, Ix.Shade);  // far front
         c.Ellipse(22 + ox, 30 + bob + oy, 10.5, 4.6, Ix.Fur);
-        c.Rect(12 + bn + ox, 32 + oy, 14 + bn + ox, 38 - liftN + oy, Ix.Fur);
-        c.Rect(27 + fn + ox, 32 + oy, 29 + fn + ox, 38 - liftN + oy, Ix.Fur);
+        Leg(12, 0, front: false, Ix.Fur);   // near back
+        Leg(27, 2, front: true, Ix.Fur);    // near front
 
         var hx = 27 + ox + p.HeadDx;
         var hy = 17 + bob + oy + p.HeadDy;

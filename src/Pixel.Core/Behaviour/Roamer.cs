@@ -21,6 +21,10 @@ public sealed class Roamer(Random rng)
 {
     public const double SleepAfterIdle = 120;
 
+    /// <summary>Steepest up/down slope of a free-roaming walk (dy/dx). The walk is drawn side-on, so steep
+    /// glides read as floating or hopping; the cat zig-zags to high or low spots over several walks instead.</summary>
+    public const double MaxWalkSlope = 0.55;
+
     public RoamIntent Next(RoamContext c)
     {
         if (c.UserIdleSeconds >= SleepAfterIdle) return new(RoamAction.Sleep, Between(30, 60));
@@ -66,19 +70,24 @@ public sealed class Roamer(Random rng)
         return new(RoamAction.Walk, Math.Abs(target - c.X) / MotionController.WalkSpeed + 0.5, target);
     }
 
-    /// <summary>Any spot on screen — middle, corners, sides, top — far enough away to be a real stroll.</summary>
+    /// <summary>
+    /// A stroll to another spot anywhere on screen — sideways with a gentle up/down drift, so over a few walks the
+    /// cat reaches the middle, corners, sides and top without ever gliding steeply.
+    /// </summary>
     private RoamIntent WalkAnywhere(RoamContext c)
     {
         var a = c.Area;
-        double x, y, dist;
-        var tries = 0;
-        do
-        {
-            x = Between(a.Left + MotionController.HalfWidth, a.Right - MotionController.HalfWidth);
-            y = Between(a.Top + Math.Min(100, (a.Bottom - a.Top) / 3), a.Bottom);
-            dist = Math.Sqrt((x - c.X) * (x - c.X) + (y - c.Y) * (y - c.Y));
-        }
-        while (dist < 120 && ++tries < 10);
+        var minX = a.Left + MotionController.HalfWidth;
+        var maxX = a.Right - MotionController.HalfWidth;
+        var minY = a.Top + Math.Min(100, (a.Bottom - a.Top) / 3);
+
+        var reach = Between(140, 520);
+        var dir = rng.NextDouble() < 0.5 ? -1 : 1;
+        if (c.X + dir * reach > maxX || c.X + dir * reach < minX) dir = -dir; // turn around at the screen edge
+        var x = Math.Clamp(c.X + dir * reach, minX, maxX);
+        var dx = Math.Abs(x - c.X);
+        var y = Math.Clamp(c.Y + Between(-1, 1) * dx * MaxWalkSlope, minY, a.Bottom);
+        var dist = Math.Sqrt(dx * dx + (y - c.Y) * (y - c.Y));
         return new(RoamAction.Walk, dist / MotionController.WalkSpeed + 0.5, x, TargetY: y);
     }
 
