@@ -40,5 +40,7 @@ public interface IBrain
         IReadOnlyList<ChatMessage> conversation, ScreenSnapshot? screen, CancellationToken ct);
 
     /// <summary>Gets ready for the next question (while the user is still typing). Best effort and silent.</summary>
-    Task WarmUpAsync(IReadOnlyList<ChatMessage> conversation, ScreenSnapshot? screen, CancellationToken ct) => Task.CompletedTask;
+    /// <returns>What it did, for the log (never screen content).</returns>
+    Task<string> WarmUpAsync(IReadOnlyList<ChatMessage> conversation, ScreenSnapshot? screen, CancellationToken ct) =>
+        Task.FromResult("not needed");
 }

@@ -163,13 +163,16 @@ internal sealed class ChatController
     {
         _warmUp?.Cancel();
         var cts = _warmUp = new CancellationTokenSource();
+        var watch = Stopwatch.StartNew();
         try
         {
             var screen = await _screen;
-            await _brain.WarmUpAsync(_conversation.ToArray(), screen, cts.Token);
+            var outcome = await _brain.WarmUpAsync(_conversation.ToArray(), screen, cts.Token);
+            Log.Info($"warm-up: {outcome} ({watch.Elapsed.TotalSeconds:0.0}s)");
         }
         catch (OperationCanceledException)
         {
+            Log.Info($"warm-up: cancelled after {watch.Elapsed.TotalSeconds:0.0}s");
         }
         catch (Exception e)
         {

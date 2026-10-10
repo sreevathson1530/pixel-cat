@@ -86,23 +86,24 @@ public sealed class LlamaBrain(
     /// Loads the brain and reads the conversation and screen while the user is still typing, so the answer starts
     /// sooner. Silent and best effort: never asks anything — when memory is short it waits for the real question.
     /// </summary>
-    public async Task WarmUpAsync(IReadOnlyList<ChatMessage> conversation, ScreenSnapshot? screen, CancellationToken ct)
+    public async Task<string> WarmUpAsync(IReadOnlyList<ChatMessage> conversation, ScreenSnapshot? screen, CancellationToken ct)
     {
-        if (locateModel() is not ModelStatus.Found found) return;
+        if (locateModel() is not ModelStatus.Found found) return "no model";
         var options = optionsFor(found.Path);
         if (!server.IsAlive)
         {
-            if (server.State == ServerState.Starting) return; // a question is already waking it
+            if (server.State == ServerState.Starting) return "already waking"; // a question is waking it
             var bytes = new FileInfo(found.Path).Length + (options.ProjectorPath is { } projector ? new FileInfo(projector).Length : 0);
-            if (checkMemory(bytes) is not MemoryVerdict.Ok) return;
-            if (!await server.EnsureReadyAsync(options, ct)) return;
+            if (checkMemory(bytes) is var verdict and not MemoryVerdict.Ok) return $"skipped, memory {verdict.GetType().Name}";
+            if (!await server.EnsureReadyAsync(options, ct)) return "brain wouldn't start";
         }
 
         using var inFlight = server.BeginRequest();
         var vision = server.Current?.ProjectorPath is not null;
         // The question isn't typed yet: an empty one renders everything up to where its words will go.
         var prompt = PromptBuilder.Build([.. conversation, new ChatMessage(ChatRole.User, "")], screen, clock(), vision);
-        await client.PrefillAsync(prompt, tools, ct);
+        var failure = await client.PrefillAsync(prompt, tools, ct);
         server.Touch();
+        return failure is null ? $"read {(screen is null ? "the chat" : vision ? "the screenshot" : "the screen text")}" : $"failed: {failure}";
     }
 }

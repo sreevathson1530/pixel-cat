@@ -59,14 +59,14 @@ public sealed class LlamaClient(HttpClient http, Func<(Uri BaseUri, string? ApiK
 
     /// <summary>
     /// Has the server read <paramref name="messages"/> into its cache without really answering, so a question that
-    /// starts the same way only has to read what's new. Returns false if the server couldn't be reached.
+    /// starts the same way only has to read what's new. Returns why it failed, or null.
     /// </summary>
-    public async Task<bool> PrefillAsync(IReadOnlyList<ChatMessage> messages, IReadOnlyList<ToolSpec>? tools, CancellationToken ct)
+    public async Task<string?> PrefillAsync(IReadOnlyList<ChatMessage> messages, IReadOnlyList<ToolSpec>? tools, CancellationToken ct)
     {
         var (response, failure) = await SendAsync(BuildRequest(messages, tools, maxTokens: 1), ct);
-        if (failure is not null) return false;
+        if (failure is not null) return failure;
         using (response) await response!.Content.ReadAsStringAsync(ct);
-        return true;
+        return null;
     }
 
     private async Task<(HttpResponseMessage? Response, string? Failure)> SendAsync(string body, CancellationToken ct)

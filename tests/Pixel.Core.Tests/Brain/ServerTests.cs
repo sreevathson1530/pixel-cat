@@ -142,6 +142,26 @@ public class ServerManagerTests
         Assert.Single(l.Launched);
     }
 
+    private sealed class NeverReady : IHealthProbe
+    {
+        public Task<bool> IsReadyAsync(CancellationToken ct) => Task.FromResult(false);
+    }
+
+    [Fact]
+    public async Task Calling_off_a_start_kills_the_half_loaded_server()
+    {
+        var l = new FakeLauncher();
+        var m = new ServerManager(l, new NeverReady(), () => DateTimeOffset.Now, TimeSpan.FromMinutes(10),
+            pollDelay: TimeSpan.FromMilliseconds(20), startTimeout: TimeSpan.FromMinutes(1));
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => m.EnsureReadyAsync(Opts, cts.Token));
+
+        Assert.True(l.Launched[0].Killed);
+        Assert.Equal(ServerState.Stopped, m.State);
+        Assert.Null(m.Current);
+    }
+
     [Fact]
     public async Task Crash_on_start_is_retried_once()
     {

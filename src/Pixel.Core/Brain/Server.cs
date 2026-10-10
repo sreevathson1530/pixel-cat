@@ -197,6 +197,13 @@ public sealed class ServerManager(
             State = ServerState.Failed;
             return false;
         }
+        catch (OperationCanceledException)
+        {
+            // Called off mid-start (panel closed, Stop): don't leave a half-loaded brain that idle unload can't see.
+            KillProcess();
+            State = ServerState.Stopped;
+            throw;
+        }
         finally
         {
             _gate.Release();
