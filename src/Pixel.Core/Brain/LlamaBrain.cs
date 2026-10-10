@@ -36,9 +36,11 @@ public sealed class LlamaBrain(
                 yield break;
         }
 
+        var options = optionsFor(modelPath);
         if (!server.IsAlive)
         {
-            switch (checkMemory(new FileInfo(modelPath).Length))
+            var bytes = new FileInfo(modelPath).Length + (options.ProjectorPath is { } projector ? new FileInfo(projector).Length : 0);
+            switch (checkMemory(bytes))
             {
                 case MemoryVerdict.TooLow low:
                     yield return new ErrorEvent(low.Message);
@@ -49,21 +51,24 @@ public sealed class LlamaBrain(
             }
 
             yield return new StatusEvent("waking up my brain… the first answer takes a little while");
-            if (!await server.EnsureReadyAsync(optionsFor(modelPath), ct))
+            if (!await server.EnsureReadyAsync(options, ct))
             {
                 yield return new ErrorEvent("My brain wouldn't start. Details are in %APPDATA%\\Pixel\\llama-server.log.");
                 yield break;
             }
         }
-        else if (!await server.EnsureReadyAsync(optionsFor(modelPath), ct))
+        else if (!await server.EnsureReadyAsync(options, ct))
         {
             yield return new ErrorEvent("My brain stopped and wouldn't restart. Details are in %APPDATA%\\Pixel\\llama-server.log.");
             yield break;
         }
 
         using var inFlight = server.BeginRequest();
-        yield return new StatusEvent(screen is null ? "thinking…" : "reading your screen & thinking…");
-        var prompt = PromptBuilder.Build(conversation, screen, clock());
+        // What the running server can do (it may have been started before a model change).
+        var vision = server.Current?.ProjectorPath is not null;
+        yield return new StatusEvent(screen is null ? "thinking…"
+            : vision && screen.Screenshot is not null ? "looking at your screen…" : "reading your screen & thinking…");
+        var prompt = PromptBuilder.Build(conversation, screen, clock(), vision);
         await foreach (var ev in client.StreamAsync(prompt, tools, ct))
         {
             server.Touch();

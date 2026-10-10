@@ -21,13 +21,45 @@ public static partial class ModelLocator
     [GeneratedRegex(@"-\d+-of-\d+\.gguf$", RegexOptions.IgnoreCase)]
     private static partial Regex AnySplit();
 
+    /// <summary>"mmproj-Qwen3VL-4B-Instruct-Q8_0" → base "Qwen3VL-4B-Instruct"; "mmproj-F16" → empty base.</summary>
+    [GeneratedRegex(@"^mmproj[-_.]?(?<base>.*?)(?:[-_.]?(?:f16|f32|bf16|q\d\w*))?$", RegexOptions.IgnoreCase)]
+    private static partial Regex ProjectorName();
+
+    [GeneratedRegex(@"vl|vision|llava|gemma-?3|pixtral|minicpm-?v", RegexOptions.IgnoreCase)]
+    private static partial Regex MultimodalName();
+
+    /// <summary>A vision projector ("mmproj") file: it goes with a model, it isn't one.</summary>
+    public static bool IsProjector(string path) =>
+        Path.GetFileName(path).StartsWith("mmproj", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The vision projector that lets <paramref name="modelPath"/> see pictures, if one sits next to it.
+    /// "mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf" pairs with "Qwen3VL-4B-Instruct-Q4_K_M.gguf"; a bare "mmproj-F16.gguf"
+    /// (the usual community layout, one model per folder) pairs with a vision model in the same folder.
+    /// </summary>
+    public static string? ProjectorFor(string modelPath)
+    {
+        if (IsProjector(modelPath)) return null;
+        var dir = Path.GetDirectoryName(Path.GetFullPath(modelPath));
+        if (dir is null || !Directory.Exists(dir)) return null;
+        var model = Path.GetFileNameWithoutExtension(modelPath);
+        string? generic = null;
+        foreach (var p in Directory.EnumerateFiles(dir, "mmproj*.gguf").Order(StringComparer.OrdinalIgnoreCase))
+        {
+            var stem = ProjectorName().Match(Path.GetFileNameWithoutExtension(p)).Groups["base"].Value;
+            if (stem.Length == 0) generic ??= p;
+            else if (model.StartsWith(stem, StringComparison.OrdinalIgnoreCase)) return p;
+        }
+        return generic is not null && MultimodalName().IsMatch(model) ? generic : null;
+    }
+
     public static ModelStatus Find(string directory, string? explicitPath)
     {
         if (!string.IsNullOrWhiteSpace(explicitPath) && File.Exists(explicitPath)) return new ModelStatus.Found(explicitPath);
         if (!Directory.Exists(directory)) return new ModelStatus.Missing(directory);
 
         var model = Directory.EnumerateFiles(directory, "*.gguf")
-            .Where(f => !AnySplit().IsMatch(f) || FirstSplit().IsMatch(f))
+            .Where(f => !IsProjector(f) && (!AnySplit().IsMatch(f) || FirstSplit().IsMatch(f)))
             .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault();
         if (model is not null) return new ModelStatus.Found(model);
@@ -75,6 +107,7 @@ public static class MemoryGate
 }
 
 /// <param name="ApiKey">Per-launch secret, handed to the server through LLAMA_API_KEY — never on the command line.</param>
+/// <param name="ProjectorPath">Vision projector (mmproj) that lets the model see the screenshot; null for a text-only brain.</param>
 public sealed record ServerOptions(
     string ExePath,
     string ModelPath,
@@ -83,10 +116,16 @@ public sealed record ServerOptions(
     int Threads,
     int GpuLayers,
     string ExtraArgs = "",
-    string? ApiKey = null)
+    string? ApiKey = null,
+    string? ProjectorPath = null)
 {
+    /// <summary>Most context a screenshot may take. Pixel already sends it downscaled to about this size.</summary>
+    public const int ImageMaxTokens = 1024;
+
     public string Arguments =>
-        $"-m \"{ModelPath}\" --host 127.0.0.1 --port {Port} -c {ContextSize} -np 1 -t {Threads} -ngl {GpuLayers} --jinja --no-webui {ExtraArgs}".Trim();
+        ($"-m \"{ModelPath}\" --host 127.0.0.1 --port {Port} -c {ContextSize} -np 1 -t {Threads} -ngl {GpuLayers} --jinja --no-webui "
+         + (ProjectorPath is null ? "" : $"--mmproj \"{ProjectorPath}\" --image-max-tokens {ImageMaxTokens} ")
+         + ExtraArgs).Trim();
 }
 
 public enum ServerState { Stopped, Starting, Ready, Failed }

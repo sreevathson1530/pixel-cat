@@ -66,7 +66,7 @@ internal sealed class ScreenWatcher(ScreenReader reader, Func<IntPtr, bool> isOw
         _lastThumb = null;
     }
 
-    /// <summary>Reads the screen right now (used when the chat opens).</summary>
+    /// <summary>Reads the screen right now, with a screenshot for the brain (used when you ask Pixel something).</summary>
     public Task<ScreenSnapshot?> CaptureNowAsync() => ReadAsync(force: true);
 
     private async Task<ScreenSnapshot?> ReadAsync(bool force)
@@ -103,7 +103,9 @@ internal sealed class ScreenWatcher(ScreenReader reader, Func<IntPtr, bool> isOw
                 }
             }
 
-            var snapshot = new ScreenSnapshot(DateTimeOffset.Now, title, process, fgText.ToString(), otherText.ToString());
+            // Only a look you asked for carries the picture; the background watch needs just the words.
+            var snapshot = new ScreenSnapshot(DateTimeOffset.Now, title, process, fgText.ToString(), otherText.ToString(),
+                force ? Screenshot(frame) : null);
             if (DebugOcr)
                 Log.Info($"[debug-ocr] {process} '{title}' lines={lines.Count} fg={snapshot.ForegroundText.Length} other={snapshot.OtherText.Length} :: {Preview(snapshot.ForegroundText)}");
             Latest = snapshot;
@@ -113,6 +115,19 @@ internal sealed class ScreenWatcher(ScreenReader reader, Func<IntPtr, bool> isOw
         finally
         {
             _gate.Release();
+        }
+    }
+
+    private static byte[]? Screenshot(ScreenFrame frame)
+    {
+        try
+        {
+            return ScreenReader.EncodeForVision(frame);
+        }
+        catch (Exception e) when (e is ArgumentException or System.Runtime.InteropServices.ExternalException)
+        {
+            Log.Error("screenshot encode", e);
+            return null;
         }
     }
 

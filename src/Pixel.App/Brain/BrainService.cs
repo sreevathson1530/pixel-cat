@@ -67,7 +67,8 @@ internal sealed class BrainService : IDisposable
         if (s.LlamaBackend == "cpu" && !MemoryGate.CanRepack(phys, commit, new FileInfo(modelPath).Length))
             extra += " --no-repack"; // keep weights memory-mapped when Windows can't spare the repack copy
         return new ServerOptions(exe, modelPath, FreeLoopbackPort(), s.ContextSize, threads, gpuLayers, extra,
-            ApiKey: RandomNumberGenerator.GetHexString(48, lowercase: true));
+            ApiKey: RandomNumberGenerator.GetHexString(48, lowercase: true),
+            ProjectorPath: ModelLocator.ProjectorFor(modelPath));
     }
 
     private static int FreeLoopbackPort()

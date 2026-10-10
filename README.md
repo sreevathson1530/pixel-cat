@@ -1,8 +1,8 @@
 # Pixel 🐾 — a desktop AI cat
 
 An original black pixel-art cat that lives on your Windows desktop, reacts to what you do, and answers questions
-about anything on your screen using a **local** Qwen2.5-Coder model. Nothing leaves your PC except web searches
-you approve.
+about anything on your screen using a **local** Qwen model that can see it. Nothing leaves your PC except web
+searches you approve.
 
 ## Use it
 
@@ -33,12 +33,18 @@ Anything that copies, opens, searches or reminds you later shows a **Do it?** ca
 
 Settings → **Brain** picks the model file and engine:
 
-- `qwen2.5-coder-7b-instruct-q4_k_m.gguf` (default, `C:\Users\sreev\pixel-models`) — ~3× faster, needs ~5 GB free RAM.
-- `qwen2.5-coder-14b-instruct-q4_k_m.gguf` (`Documents\pixel`) — smarter, needs ~9 GB free RAM.
+- `Qwen3VL-4B-Instruct-Q4_K_M.gguf` + `mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf` (default, `C:\Users\sreev\pixel-models`)
+  — **sees pictures**: gets a screenshot with every question, plus the OCR text. Needs ~4 GB free RAM.
+- `qwen2.5-coder-7b-instruct-q4_k_m.gguf` (`pixel-models`) — reads screen text only, stronger at code, ~5 GB free RAM.
+- `qwen2.5-coder-14b-instruct-q4_k_m.gguf` (`Documents\pixel`) — reads screen text only, smartest, ~9 GB free RAM.
+
+A model sees pictures when its vision projector (`mmproj-….gguf`) sits next to it; the list in Settings says
+*sees pictures* or *reads text*.
 
 The model loads when you ask something and unloads after 10 idle minutes. If memory is short Pixel says so instead
 of hanging; while it reads a long screen you'll see *reading… 42%*, and the send button turns into **Stop**.
-The model only sees screen **text** (Windows OCR), not images.
+Each question takes a fresh look at the screen (Pixel's own windows are invisible to it). Switch the 👁 eye off
+in the chat to ask without the screen.
 
 ## Privacy
 

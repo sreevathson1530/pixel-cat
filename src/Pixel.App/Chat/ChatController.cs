@@ -32,6 +32,7 @@ internal sealed class ChatController
 
     private const int MaxToolRounds = 3;
     private static readonly TimeSpan StallLimit = TimeSpan.FromMinutes(4);
+    private static readonly TimeSpan ScreenFreshness = TimeSpan.FromSeconds(4);
     private const string StallMessage =
         "Mrrp… my brain went quiet for 4 minutes, so I stopped. Your PC is probably short on free memory — "
         + "close a few apps, or pick the smaller brain in Settings, then ask again.";
@@ -162,6 +163,20 @@ internal sealed class ChatController
         _window!.Post(new { type = "ask", text });
     }
 
+    /// <summary>
+    /// The screen as it is now: looks again when the last look is a few seconds old, since you may have scrolled or
+    /// switched windows while the panel was open (the panel itself is invisible to the capture).
+    /// </summary>
+    private async Task<ScreenSnapshot?> FreshScreenAsync()
+    {
+        var s = await _screen;
+        if (s is not null && DateTimeOffset.Now - s.At < ScreenFreshness) return s;
+        _screen = SafeSnapshot();
+        s = await _screen;
+        _window?.Post(new { type = "context", text = DescribeContext(s) });
+        return s;
+    }
+
     private async Task<ScreenSnapshot?> SafeSnapshot()
     {
         try
@@ -290,7 +305,7 @@ internal sealed class ChatController
 
     private async Task RunTurnAsync(string text, bool useScreen)
     {
-        var screen = useScreen ? await _screen : null;
+        var screen = useScreen ? await FreshScreenAsync() : null;
         var watch = System.Diagnostics.Stopwatch.StartNew();
         double? firstToken = null;
         _turn?.Cancel();

@@ -104,7 +104,7 @@ internal sealed class SettingsWindow : Window
     private static string CurrentModel(Pixel.Core.Storage.Settings s) =>
         Pixel.Core.Brain.ModelLocator.Find(s.ModelDirectory, s.ModelPath) is Pixel.Core.Brain.ModelStatus.Found f ? f.Path : s.ModelPath ?? "";
 
-    /// <summary>Every .gguf in the usual model folders, labelled with its size.</summary>
+    /// <summary>Every model in the usual folders, labelled with its size and whether it can see pictures.</summary>
     private static IEnumerable<ModelChoice> ModelChoices(Pixel.Core.Storage.Settings s)
     {
         var dirs = new[]
@@ -115,8 +115,10 @@ internal sealed class SettingsWindow : Window
         };
         return dirs.Where(Directory.Exists).Distinct(StringComparer.OrdinalIgnoreCase)
             .SelectMany(d => Directory.EnumerateFiles(d, "*.gguf"))
+            .Where(p => !Pixel.Core.Brain.ModelLocator.IsProjector(p))
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Select(p => new ModelChoice(p, $"{Path.GetFileNameWithoutExtension(p)}  ({new FileInfo(p).Length / (double)(1L << 30):0.0} GB)"));
+            .Select(p => new ModelChoice(p, $"{Path.GetFileNameWithoutExtension(p)}  ({new FileInfo(p).Length / (double)(1L << 30):0.0} GB"
+                                            + (Pixel.Core.Brain.ModelLocator.ProjectorFor(p) is null ? ", reads text)" : ", sees pictures)")));
     }
 
     private void Save()

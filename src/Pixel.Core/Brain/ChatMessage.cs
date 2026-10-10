@@ -7,11 +7,13 @@ public enum ChatRole { System, User, Assistant, Tool }
 /// <summary>A tool call requested by the model. <see cref="ArgumentsJson"/> is the raw JSON object text.</summary>
 public sealed record ToolInvocation(string Id, string Name, string ArgumentsJson);
 
+/// <param name="ImageJpeg">A picture sent along with the text (the screenshot on the newest question); never stored.</param>
 public sealed record ChatMessage(
     ChatRole Role,
     string Content,
     string? ToolCallId = null,
-    IReadOnlyList<ToolInvocation>? ToolCalls = null);
+    IReadOnlyList<ToolInvocation>? ToolCalls = null,
+    byte[]? ImageJpeg = null);
 
 /// <summary>Streamed output of one model turn.</summary>
 public abstract record BrainEvent;

@@ -101,7 +101,26 @@ public sealed class LlamaClient(HttpClient http, Func<(Uri BaseUri, string? ApiK
                     ChatRole.Tool => "tool",
                     _ => "user",
                 });
-                w.WriteString("content", m.Content);
+                if (m.ImageJpeg is { Length: > 0 } image)
+                {
+                    // OpenAI-style parts: the picture first, then the words about it.
+                    w.WriteStartArray("content");
+                    w.WriteStartObject();
+                    w.WriteString("type", "image_url");
+                    w.WriteStartObject("image_url");
+                    w.WriteString("url", "data:image/jpeg;base64," + Convert.ToBase64String(image));
+                    w.WriteEndObject();
+                    w.WriteEndObject();
+                    w.WriteStartObject();
+                    w.WriteString("type", "text");
+                    w.WriteString("text", m.Content);
+                    w.WriteEndObject();
+                    w.WriteEndArray();
+                }
+                else
+                {
+                    w.WriteString("content", m.Content);
+                }
                 if (m.ToolCallId is not null) w.WriteString("tool_call_id", m.ToolCallId);
                 if (m.ToolCalls is { Count: > 0 })
                 {

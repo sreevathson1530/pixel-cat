@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
+using System.IO;
 using System.Runtime.InteropServices;
 using Pixel.App.Native;
 using Pixel.App.Shell;
@@ -69,6 +71,39 @@ internal sealed class ScreenReader
         return lines;
     }
 
+    /// <summary>Longest side of the screenshot shown to a vision brain: 1024×576 for a 16:9 screen ≈ 580 image tokens.</summary>
+    public const int VisionMaxSide = 1024;
+
+    private static readonly ImageCodecInfo Jpeg = ImageCodecInfo.GetImageEncoders().First(c => c.FormatID == ImageFormat.Jpeg.Guid);
+
+    /// <summary>The frame as a downscaled JPEG for a brain that can see pictures. Kept in memory only.</summary>
+    public static byte[] EncodeForVision(ScreenFrame f, int maxSide = VisionMaxSide)
+    {
+        var k = Math.Min(1.0, maxSide / (double)Math.Max(f.Width, f.Height));
+        int w = Math.Max(1, (int)Math.Round(f.Width * k)), h = Math.Max(1, (int)Math.Round(f.Height * k));
+        var pin = GCHandle.Alloc(f.Bgra, GCHandleType.Pinned);
+        try
+        {
+            using var source = new Bitmap(f.Width, f.Height, f.Width * 4, PixelFormat.Format32bppRgb, pin.AddrOfPinnedObject());
+            using var small = new Bitmap(w, h, PixelFormat.Format24bppRgb);
+            using (var g = Graphics.FromImage(small))
+            {
+                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                g.DrawImage(source, 0, 0, w, h);
+            }
+            using var ms = new MemoryStream();
+            using var quality = new EncoderParameters(1);
+            quality.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 85L);
+            small.Save(ms, Jpeg, quality);
+            return ms.ToArray();
+        }
+        finally
+        {
+            pin.Free();
+        }
+    }
+
     /// <summary>OCR has a maximum image size; downscale by an integer factor when needed.</summary>
     private static (byte[] Bytes, int W, int H, double Scale) FitForOcr(ScreenFrame f)
     {
@@ -83,9 +118,10 @@ internal sealed class ScreenReader
         return (dst, w, h, 1.0 / k);
     }
 
-    /// <summary>Title and process of a window, best effort.</summary>
+    /// <summary>Title and process of a window, best effort. The desktop is called that, not "Program Manager".</summary>
     public static (string Title, string Process) Describe(IntPtr hwnd)
     {
+        if (Win32.ClassName(hwnd) is "Progman" or "WorkerW") return ("Desktop (wallpaper and icons)", "explorer");
         var title = Win32.WindowText(hwnd);
         try
         {
