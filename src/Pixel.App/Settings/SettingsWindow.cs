@@ -21,7 +21,7 @@ internal sealed class SettingsWindow : Window
     private readonly ComboBox _palette = new(), _model = new(), _backend = new();
     private readonly Slider _scale = new() { Minimum = 2, Maximum = 5, TickFrequency = 1, IsSnapToTickEnabled = true };
     private readonly Slider _volume = new() { Minimum = 0, Maximum = 1 };
-    private readonly CheckBox _muted = new(), _errors = new(), _autostart = new();
+    private readonly CheckBox _muted = new(), _errors = new(), _autostart = new(), _freeRoam = new();
     private readonly TextBox _water = new(), _stretch = new(), _threads = new(), _agents = new();
 
     public SettingsWindow(AppHost host)
@@ -41,6 +41,7 @@ internal sealed class SettingsWindow : Window
         foreach (var name in Palette.Names) _palette.Items.Add(name);
         _palette.SelectedItem = s.Palette;
         _scale.Value = s.Scale;
+        _freeRoam.IsChecked = s.FreeRoam;
         _muted.IsChecked = s.Muted;
         _volume.Value = s.Volume;
         foreach (var m in ModelChoices(s)) _model.Items.Add(m);
@@ -58,6 +59,8 @@ internal sealed class SettingsWindow : Window
         stack.Children.Add(Section("Look"));
         stack.Children.Add(Row("Fur colour", Themed(_palette)));
         stack.Children.Add(Row("Size (restart to apply)", _scale));
+        stack.Children.Add(Row("Walk anywhere on screen", Themed(_freeRoam)));
+        stack.Children.Add(Hint("Off: Pixel stays on the floor and hops onto window tops instead."));
         stack.Children.Add(Section("Sounds"));
         stack.Children.Add(Row("Mute", Themed(_muted)));
         stack.Children.Add(Row("Volume", _volume));
@@ -127,6 +130,7 @@ internal sealed class SettingsWindow : Window
         {
             Palette = _palette.SelectedItem as string ?? old.Palette,
             Scale = (int)_scale.Value,
+            FreeRoam = _freeRoam.IsChecked == true,
             Muted = _muted.IsChecked == true,
             Volume = Math.Round(_volume.Value, 2),
             ModelPath = model,

@@ -133,3 +133,85 @@ public class MotionControllerTests
         Assert.Equal(700, m.Body.Y, 3);
     }
 }
+
+public class FreeRoamMotionTests
+{
+    private static readonly Bounds Area = new(0, 0, 1280, 800);
+
+    private static MotionController Free(double bodyHeight = 120) =>
+        new(Area) { FreeRoam = true, BodyHeight = bodyHeight };
+
+    private static void Run(MotionController m, double seconds)
+    {
+        for (var t = 0.0; t < seconds; t += 1 / 60.0) m.Step(1 / 60.0, []);
+    }
+
+    [Fact]
+    public void Cat_can_rest_in_the_middle_of_the_screen()
+    {
+        var m = Free();
+        m.Place(640, 400);
+        Run(m, 2);
+        Assert.Equal(400, m.Body.Y, 3);
+        Assert.True(m.Body.Grounded);
+    }
+
+    [Fact]
+    public void Walks_diagonally_to_any_point()
+    {
+        var m = Free();
+        m.Place(200, 700);
+        m.WalkToPoint(900, 250);
+        Assert.Equal(Facing.Right, m.Body.Facing);
+        Run(m, 20);
+        Assert.Equal(900, m.Body.X, 1);
+        Assert.Equal(250, m.Body.Y, 1);
+        Assert.Equal(MotionMode.Idle, m.Mode);
+    }
+
+    [Fact]
+    public void Faces_left_when_walking_left()
+    {
+        var m = Free();
+        m.Place(900, 500);
+        m.WalkToPoint(300, 200);
+        Run(m, 0.2);
+        Assert.Equal(Facing.Left, m.Body.Facing);
+    }
+
+    [Fact]
+    public void Never_leaves_the_screen_even_at_the_top()
+    {
+        var m = Free(bodyHeight: 120);
+        m.Place(640, 400);
+        m.WalkToPoint(-500, -500);
+        Run(m, 30);
+        Assert.True(m.Body.X >= Area.Left + MotionController.HalfWidth);
+        Assert.True(m.Body.Y >= Area.Top + 120, "whole cat stays visible");
+    }
+
+    [Fact]
+    public void Dropped_cat_stays_where_it_was_dropped()
+    {
+        var m = Free();
+        m.Place(640, 700);
+        m.Hold(300, 350);
+        m.Release();
+        Run(m, 2);
+        Assert.Equal(300, m.Body.X, 3);
+        Assert.Equal(350, m.Body.Y, 3);
+        Assert.Equal(MotionMode.Idle, m.Mode);
+    }
+
+    [Fact]
+    public void Pounce_dashes_toward_a_point_within_reach()
+    {
+        var m = Free();
+        m.Place(200, 600);
+        m.Pounce(1200, 100);
+        Run(m, 3);
+        var moved = Math.Sqrt(Math.Pow(m.Body.X - 200, 2) + Math.Pow(m.Body.Y - 600, 2));
+        Assert.InRange(moved, 150, MotionController.FreePounceReach + 1);
+        Assert.True(m.Body.X > 200 && m.Body.Y < 600, "moved toward the target");
+    }
+}

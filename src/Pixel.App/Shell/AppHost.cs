@@ -63,7 +63,7 @@ internal sealed class AppHost : IDisposable
 
     public void Start()
     {
-        Cat = new CatController(Settings.Scale, Palette.Named(Settings.Palette), OwnWindows.Contains);
+        Cat = new CatController(Settings.Scale, Palette.Named(Settings.Palette), OwnWindows.Contains) { FreeRoam = Settings.FreeRoam };
         Cat.Start();
         OwnWindows.Add(Cat.Handle);
         var reader = new ScreenReader();
@@ -120,7 +120,8 @@ internal sealed class AppHost : IDisposable
         {
             _finding = finding;
             double? x = line.Text is null ? null : (line.Bounds.Left + line.Bounds.Width / 2.0) / Cat.DpiScale;
-            Cat.RaiseAlert(x);
+            double? y = line.Text is null ? null : line.Bounds.Bottom / Cat.DpiScale + 70; // stand just below the error line
+            Cat.RaiseAlert(x, atY: y);
             Log.Info("error spotted on screen");
         });
     }
@@ -193,6 +194,7 @@ internal sealed class AppHost : IDisposable
         Settings = settings;
         SettingsStore.Save(SettingsStore.DefaultPath, settings);
         Cat.Palette = Palette.Named(settings.Palette);
+        Cat.FreeRoam = settings.FreeRoam;
         Reminders?.ApplySettings();
     }
 

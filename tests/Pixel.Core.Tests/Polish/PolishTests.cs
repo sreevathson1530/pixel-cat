@@ -9,22 +9,36 @@ public class FocusRuleTests
 
     [Fact]
     public void A_window_covering_the_monitor_is_fullscreen() =>
-        Assert.True(FocusRule.IsFullscreen(new ScreenRect(0, 0, 1920, 1200), Monitor, "Chrome_WidgetWin_1"));
+        Assert.True(FocusRule.IsFullscreen(new ScreenRect(0, 0, 1920, 1200), Monitor, "Chrome_WidgetWin_1", maximized: false, hasCaption: false));
 
     [Fact]
     public void A_maximised_window_with_a_visible_taskbar_is_not() =>
-        Assert.False(FocusRule.IsFullscreen(new ScreenRect(0, 0, 1920, 1152), Monitor, "Chrome_WidgetWin_1"));
+        Assert.False(FocusRule.IsFullscreen(new ScreenRect(0, 0, 1920, 1152), Monitor, "Chrome_WidgetWin_1", maximized: true, hasCaption: true));
 
     [Theory]
     [InlineData("Progman")]
     [InlineData("WorkerW")]
     [InlineData("Shell_TrayWnd")]
     public void The_desktop_itself_is_not_a_fullscreen_app(string cls) =>
-        Assert.False(FocusRule.IsFullscreen(new ScreenRect(0, 0, 1920, 1200), Monitor, cls));
+        Assert.False(FocusRule.IsFullscreen(new ScreenRect(0, 0, 1920, 1200), Monitor, cls, maximized: false, hasCaption: false));
 
     [Fact]
     public void A_window_bigger_than_the_monitor_counts() =>
-        Assert.True(FocusRule.IsFullscreen(new ScreenRect(-8, -8, 1928, 1208), Monitor, "UnityWndClass"));
+        Assert.True(FocusRule.IsFullscreen(new ScreenRect(-8, -8, 1928, 1208), Monitor, "UnityWndClass", maximized: false, hasCaption: false));
+}
+
+public class FocusRuleAutoHideTaskbarTests
+{
+    private static readonly ScreenRect Monitor = new(0, 0, 1920, 1200);
+
+    [Fact]
+    public void A_maximised_window_with_an_auto_hidden_taskbar_is_not_fullscreen() =>
+        // Covers the whole monitor, but it is just a maximised app (title bar, maximise state).
+        Assert.False(FocusRule.IsFullscreen(new ScreenRect(0, 0, 1920, 1200), Monitor, "CASCADIA_HOSTING_WINDOW_CLASS", maximized: true, hasCaption: true));
+
+    [Fact]
+    public void A_borderless_window_covering_the_monitor_is_fullscreen() =>
+        Assert.True(FocusRule.IsFullscreen(new ScreenRect(0, 0, 1920, 1200), Monitor, "MediaPlayerClass", maximized: false, hasCaption: false));
 }
 
 public class ChipSynthTests

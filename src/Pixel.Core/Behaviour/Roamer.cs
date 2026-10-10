@@ -4,7 +4,7 @@ namespace Pixel.Core.Behaviour;
 
 public enum RoamAction { Sit, Walk, Groom, Sleep, Stretch, JumpUp }
 
-public sealed record RoamIntent(RoamAction Action, double Seconds, double? TargetX = null, Platform? Target = null);
+public sealed record RoamIntent(RoamAction Action, double Seconds, double? TargetX = null, Platform? Target = null, double? TargetY = null);
 
 public sealed record RoamContext(
     double X,
@@ -13,7 +13,8 @@ public sealed record RoamContext(
     IReadOnlyList<Platform> Platforms,
     double UserIdleSeconds,
     bool Staying,
-    RoamAction? Last);
+    RoamAction? Last,
+    bool FreeRoam = false);
 
 /// <summary>Decides what the cat does when nothing needs its attention.</summary>
 public sealed class Roamer(Random rng)
@@ -41,6 +42,7 @@ public sealed class Roamer(Random rng)
         if (roll < 0.80) return new(RoamAction.Groom, 3);
         if (roll < 0.95)
         {
+            if (c.FreeRoam) return Walk(c); // free roaming reaches everywhere on foot — no window hopping
             var reachable = c.Platforms
                 .Where(p => p.Y < c.Y - 40 && c.Y - p.Y <= MotionController.MaxJumpHeight && p.Right - p.Left >= 80)
                 .ToList();
@@ -54,6 +56,7 @@ public sealed class Roamer(Random rng)
 
     private RoamIntent Walk(RoamContext c)
     {
+        if (c.FreeRoam) return WalkAnywhere(c);
         var min = c.Area.Left + MotionController.HalfWidth;
         var max = c.Area.Right - MotionController.HalfWidth;
         double target;
@@ -61,6 +64,22 @@ public sealed class Roamer(Random rng)
         do target = Between(min, max);
         while (Math.Abs(target - c.X) < 80 && ++tries < 10);
         return new(RoamAction.Walk, Math.Abs(target - c.X) / MotionController.WalkSpeed + 0.5, target);
+    }
+
+    /// <summary>Any spot on screen — middle, corners, sides, top — far enough away to be a real stroll.</summary>
+    private RoamIntent WalkAnywhere(RoamContext c)
+    {
+        var a = c.Area;
+        double x, y, dist;
+        var tries = 0;
+        do
+        {
+            x = Between(a.Left + MotionController.HalfWidth, a.Right - MotionController.HalfWidth);
+            y = Between(a.Top + Math.Min(100, (a.Bottom - a.Top) / 3), a.Bottom);
+            dist = Math.Sqrt((x - c.X) * (x - c.X) + (y - c.Y) * (y - c.Y));
+        }
+        while (dist < 120 && ++tries < 10);
+        return new(RoamAction.Walk, dist / MotionController.WalkSpeed + 0.5, x, TargetY: y);
     }
 
     private double Between(double a, double b) => a + rng.NextDouble() * (b - a);

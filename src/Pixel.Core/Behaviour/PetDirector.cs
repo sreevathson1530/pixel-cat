@@ -18,7 +18,8 @@ public sealed class PetDirector(MotionController motion, Roamer roamer)
     private bool _intentStarted;
     private bool _sleepingFromIdle;
     private double? _pounceAt;
-    private double _huntTargetX;
+    private double _huntTargetX, _huntTargetY;
+    private bool _dashing;
 
     public AnimationId Animation { get; private set; } = AnimationId.Idle;
     public double AnimationStart { get; private set; }
@@ -28,11 +29,15 @@ public sealed class PetDirector(MotionController motion, Roamer roamer)
     /// <summary>Dropped somewhere by the user: no wandering until double-clicked.</summary>
     public bool Staying { get; set; }
 
-    /// <summary>Cursor X in the same coordinates as the motion area (for hunting).</summary>
+    /// <summary>Cursor position in the same coordinates as the motion area (for hunting).</summary>
     public double CursorX { get; set; }
+    public double CursorY { get; set; }
 
     /// <summary>Where something needs attention (e.g. an error on screen): the cat runs there before alerting.</summary>
     public double? AttentionX { get; set; }
+
+    /// <summary>Vertical part of the attention point (used when free roaming).</summary>
+    public double? AttentionY { get; set; }
 
     public void Tick(double now, double dt, PetSignals s, IReadOnlyList<Platform> platforms, double userIdleSeconds)
     {
@@ -57,11 +62,27 @@ public sealed class PetDirector(MotionController motion, Roamer roamer)
             Activity.Purr => AnimationId.Purr,
             Activity.Knead => AnimationId.Knead,
             Activity.Paper => AnimationId.Paper,
+            _ when _dashing => AnimationId.Run,
             _ => Roam(now, platforms, userIdleSeconds),
         };
+        if (_dashing && motion.Mode != MotionMode.Walking) _dashing = false;
 
         var goingToAttention = false;
-        if (activity == Activity.Alert && AttentionX is { } ax && motion.Body.Grounded)
+        if (activity == Activity.Alert && motion.FreeRoam && AttentionX is { } fx && AttentionY is { } fy)
+        {
+            var dist = Math.Sqrt(Math.Pow(motion.Body.X - fx, 2) + Math.Pow(motion.Body.Y - fy, 2));
+            if (dist > 30)
+            {
+                if (motion.Mode != MotionMode.Walking) motion.WalkToPoint(fx, fy, MotionController.RunSpeed);
+                goingToAttention = true;
+                anim = AnimationId.Run;
+            }
+            else
+            {
+                AttentionX = AttentionY = null;
+            }
+        }
+        else if (activity == Activity.Alert && AttentionX is { } ax && motion.Body.Grounded)
         {
             if (Math.Abs(motion.Body.X - ax) > 30)
             {
@@ -78,8 +99,16 @@ public sealed class PetDirector(MotionController motion, Roamer roamer)
         if (activity is not (Activity.Roam or Activity.Dangle) && !goingToAttention) motion.Stop();
         if (activity == Activity.Hunt && _pounceAt is { } at && now >= at)
         {
-            var reach = Math.Clamp(_huntTargetX - motion.Body.X, -PounceReach, PounceReach);
-            motion.Pounce(motion.Body.X + reach);
+            if (motion.FreeRoam)
+            {
+                motion.Pounce(_huntTargetX, _huntTargetY);
+                _dashing = true;
+            }
+            else
+            {
+                var reach = Math.Clamp(_huntTargetX - motion.Body.X, -PounceReach, PounceReach);
+                motion.Pounce(motion.Body.X + reach);
+            }
             _pounceAt = null;
         }
 
@@ -103,6 +132,7 @@ public sealed class PetDirector(MotionController motion, Roamer roamer)
         {
             _pounceAt = now + CrouchBeforePounce;
             _huntTargetX = CursorX;
+            _huntTargetY = CursorY;
         }
         if (_pounceAt is null) return selected == Activity.Hunt && !motion.Body.Grounded ? Activity.Roam : selected;
         if (selected is Activity.Roam or Activity.Hunt or Activity.Purr or Activity.Knead or Activity.Paper)
@@ -124,7 +154,7 @@ public sealed class PetDirector(MotionController motion, Roamer roamer)
             if (_intent is not null) _lastRoam = _intent.Action;
             motion.Stop();
             _intent = roamer.Next(new RoamContext(
-                motion.Body.X, motion.Body.Y, motion.Area, platforms, userIdleSeconds, Staying, _lastRoam));
+                motion.Body.X, motion.Body.Y, motion.Area, platforms, userIdleSeconds, Staying, _lastRoam, motion.FreeRoam));
             _intentUntil = now + _intent.Seconds;
             _intentStarted = false;
             _sleepingFromIdle = _intent.Action == RoamAction.Sleep && userIdleSeconds >= Roamer.SleepAfterIdle;
@@ -135,7 +165,8 @@ public sealed class PetDirector(MotionController motion, Roamer roamer)
             case RoamAction.Walk:
                 if (!_intentStarted)
                 {
-                    motion.WalkTo(_intent.TargetX ?? motion.Body.X);
+                    if (motion.FreeRoam) motion.WalkToPoint(_intent.TargetX ?? motion.Body.X, _intent.TargetY ?? motion.Body.Y);
+                    else motion.WalkTo(_intent.TargetX ?? motion.Body.X);
                     _intentStarted = true;
                 }
                 return AnimationId.Walk;

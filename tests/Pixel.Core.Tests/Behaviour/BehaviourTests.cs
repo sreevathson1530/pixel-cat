@@ -211,3 +211,51 @@ public class PetDirectorAttentionTests
         Assert.Equal(AnimationId.Alert, d.Animation);
     }
 }
+
+public class FreeRoamBehaviourTests
+{
+    private static readonly Bounds Area = new(0, 0, 1280, 800);
+
+    [Fact]
+    public void Walks_go_everywhere_on_screen()
+    {
+        var r = new Roamer(new Random(11));
+        var ctx = new RoamContext(640, 700, Area, [], 0, Staying: false, Last: null, FreeRoam: true);
+        var targets = Enumerable.Range(0, 400).Select(_ => r.Next(ctx))
+            .Where(i => i.Action == RoamAction.Walk).ToList();
+
+        Assert.All(targets, t => Assert.NotNull(t.TargetY));
+        Assert.Contains(targets, t => t.TargetY < 300);                       // upper part
+        Assert.Contains(targets, t => t.TargetY is > 300 and < 550);          // middle
+        Assert.Contains(targets, t => t.TargetX < 320);                       // left side
+        Assert.Contains(targets, t => t.TargetX > 960);                       // right side
+        Assert.All(targets, t => Assert.InRange(t.TargetY!.Value, Area.Top, Area.Bottom));
+        Assert.DoesNotContain(r.Next(ctx with { Last = RoamAction.Sit }).Action, new[] { RoamAction.JumpUp });
+    }
+
+    [Fact]
+    public void Hunt_dashes_toward_the_cursor_anywhere()
+    {
+        var m = new MotionController(Area) { FreeRoam = true, BodyHeight = 120 };
+        m.Place(300, 700);
+        var d = new PetDirector(m, new Roamer(new Random(3))) { CursorX = 700, CursorY = 300 };
+        var now = 0.0;
+        d.Tick(now, 1 / 30.0, new PetSignals { Hunting = true }, [], 0);
+        Assert.Equal(AnimationId.Crouch, d.Animation);
+        for (; now < 2; now += 1 / 30.0) d.Tick(now, 1 / 30.0, new PetSignals(), [], 0);
+        Assert.True(m.Body.X > 300 && m.Body.Y < 700, $"dashed toward the cursor, at ({m.Body.X:0},{m.Body.Y:0})");
+    }
+
+    [Fact]
+    public void Runs_to_an_error_anywhere_on_screen()
+    {
+        var m = new MotionController(Area) { FreeRoam = true, BodyHeight = 120 };
+        m.Place(200, 700);
+        var d = new PetDirector(m, new Roamer(new Random(4))) { AttentionX = 900, AttentionY = 260 };
+        var now = 0.0;
+        for (; now < 6; now += 1 / 30.0) d.Tick(now, 1 / 30.0, new PetSignals { Alert = true }, [], 0);
+        Assert.InRange(m.Body.X, 860, 940);
+        Assert.InRange(m.Body.Y, 220, 300);
+        Assert.Equal(AnimationId.Alert, d.Animation);
+    }
+}

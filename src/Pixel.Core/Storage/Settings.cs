@@ -8,6 +8,9 @@ public sealed record Settings
 {
     public string Palette { get; init; } = "black";
     public int Scale { get; init; } = 3;
+
+    /// <summary>Walk anywhere on screen (true) or only along the floor and window tops (false).</summary>
+    public bool FreeRoam { get; init; } = true;
     public bool StartWithWindows { get; init; } = true;
     public double Volume { get; init; } = 0.6;
     public bool Muted { get; init; }

@@ -195,3 +195,33 @@ public class HotkeyDetectorTests
         Assert.Null(Press(d, VK.Space).Action);
     }
 }
+
+public class HotkeyDebounceTests
+{
+    private static KeyDecision Chord(HotkeyDetector d)
+    {
+        d.OnKey(VK.LControl, true);
+        d.OnKey(VK.RShift, true);
+        var down = d.OnKey(VK.Delete, true);
+        d.OnKey(VK.Delete, false);
+        d.OnKey(VK.RShift, false);
+        d.OnKey(VK.LControl, false);
+        return down;
+    }
+
+    [Fact]
+    public void Vanish_presses_closer_than_a_second_are_swallowed_but_ignored()
+    {
+        var now = 0.0;
+        var d = new HotkeyDetector(() => now);
+        Assert.Equal(HotkeyAction.ToggleVanish, Chord(d).Action);
+
+        now = 0.3;
+        var flurry = Chord(d);
+        Assert.Null(flurry.Action);
+        Assert.True(flurry.Swallow, "still kept away from other apps");
+
+        now = 1.5;
+        Assert.Equal(HotkeyAction.ToggleVanish, Chord(d).Action);
+    }
+}

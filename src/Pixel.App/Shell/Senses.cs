@@ -74,8 +74,11 @@ internal sealed class FocusWatcher
             if (Win32.GetMonitorInfo(Win32.MonitorFromWindow(fg, Win32.MONITOR_DEFAULTTONEAREST), ref info))
             {
                 var m = info.rcMonitor;
+                const long WS_CAPTION = 0x00C00000;
+                var style = Win32.GetWindowLongPtr(fg, Win32.GWL_STYLE).ToInt64();
                 fullscreen = FocusRule.IsFullscreen(new ScreenRect(r.Left, r.Top, r.Right, r.Bottom),
-                    new ScreenRect(m.Left, m.Top, m.Right, m.Bottom), Win32.ClassName(fg));
+                    new ScreenRect(m.Left, m.Top, m.Right, m.Bottom), Win32.ClassName(fg),
+                    maximized: Win32.IsZoomed(fg), hasCaption: (style & WS_CAPTION) == WS_CAPTION);
             }
         }
         if (_host.Cat.Overlay.FocusMode != fullscreen)

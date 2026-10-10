@@ -46,7 +46,10 @@ internal sealed class CatController
         Palette = palette;
         _isOwnWindow = isOwnWindow;
         _window = new CatWindow(scale);
-        _motion = new MotionController(new Bounds(0, 0, SystemParameters.WorkArea.Width, SystemParameters.WorkArea.Height));
+        _motion = new MotionController(new Bounds(0, 0, SystemParameters.WorkArea.Width, SystemParameters.WorkArea.Height))
+        {
+            BodyHeight = _window.Height,
+        };
         _director = new PetDirector(_motion, new Roamer(new Random()));
         _timer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromSeconds(TickSeconds) };
         _timer.Tick += (_, _) => Tick();
@@ -73,6 +76,18 @@ internal sealed class CatController
     /// <summary>User dropped the cat somewhere (stays until double-clicked).</summary>
     public bool Staying => _userStaying;
 
+    /// <summary>Walk anywhere on screen (default) instead of only the floor and window tops.</summary>
+    public bool FreeRoam
+    {
+        get => _motion.FreeRoam;
+        set
+        {
+            if (_motion.FreeRoam == value) return;
+            _motion.FreeRoam = value;
+            _motion.Place(_motion.Body.X, _motion.Body.Y); // settle into the new style where it stands
+        }
+    }
+
     /// <summary>Keeps the cat beside the open chat panel instead of wandering off.</summary>
     public bool HoldStill { get; set; }
     public double UserIdleSeconds => Now - _lastUserInput;
@@ -89,16 +104,18 @@ internal sealed class CatController
     public bool AlertActive => Now < _alertUntil;
 
     /// <summary>Shows the "!" alert; if <paramref name="atX"/> is given the cat runs there first.</summary>
-    public void RaiseAlert(double? atX, double seconds = 20)
+    public void RaiseAlert(double? atX, double seconds = 20, double? atY = null)
     {
         _alertUntil = Now + seconds;
         _director.AttentionX = atX;
+        _director.AttentionY = atY;
     }
 
     public void ClearAlert()
     {
         _alertUntil = 0;
         _director.AttentionX = null;
+        _director.AttentionY = null;
     }
 
     /// <summary>Thread-safe: called from the input hook thread.</summary>
@@ -175,6 +192,7 @@ internal sealed class CatController
         };
 
         _director.CursorX = cursor.X;
+        _director.CursorY = cursor.Y;
         _director.Staying = _userStaying || HoldStill;
         var before = _director.Activity;
         _director.Tick(now, dt, signals, _platforms, UserIdleSeconds);
@@ -243,7 +261,11 @@ internal sealed class CatController
             var area = new Bounds(a.Left, a.Top, a.Right, a.Bottom);
             if (area != _motion.Area) _motion.SetArea(area);
         }
-        if (now - _lastPlatformScan > 0.5 && _window.Handle != IntPtr.Zero)
+        if (_motion.FreeRoam)
+        {
+            if (_platforms.Count > 0) _platforms = []; // free roaming doesn't stand on windows
+        }
+        else if (now - _lastPlatformScan > 0.5 && _window.Handle != IntPtr.Zero)
         {
             _lastPlatformScan = now;
             _platforms = PlatformScanner.Scan(_window.DpiScale, _isOwnWindow);

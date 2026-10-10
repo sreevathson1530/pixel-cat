@@ -17,13 +17,17 @@ public static class VK
 /// <summary>
 /// Pure hotkey state machine for <c>Ctrl + Right Shift + Delete</c> (vanish) and <c>Ctrl + Win + Space</c> (chat).
 /// Fires once per press, swallows the trigger key's down/repeat/up so other apps never see it.
+/// Vanish/revive is debounced: a flurry of presses mid-poof counts once.
 /// </summary>
-public sealed class HotkeyDetector
+public sealed class HotkeyDetector(Func<double>? clock = null)
 {
+    private const double VanishDebounceSeconds = 1.0;
     private static readonly int[] Modifiers = [VK.LControl, VK.RControl, VK.LShift, VK.RShift, VK.LWin, VK.RWin];
+    private readonly Func<double> _clock = clock ?? (() => Environment.TickCount64 / 1000.0);
     private readonly HashSet<int> _down = [];
     private bool _swallowingDelete;
     private bool _swallowingSpace;
+    private double _lastVanish = double.NegativeInfinity;
 
     private bool Ctrl => _down.Contains(VK.LControl) || _down.Contains(VK.RControl);
     private bool Win => _down.Contains(VK.LWin) || _down.Contains(VK.RWin);
@@ -37,7 +41,15 @@ public sealed class HotkeyDetector
             return default;
         }
 
-        if (vk == VK.Delete) return Trigger(down, Ctrl && _down.Contains(VK.RShift), ref _swallowingDelete, HotkeyAction.ToggleVanish, mask: false);
+        if (vk == VK.Delete)
+        {
+            var decision = Trigger(down, Ctrl && _down.Contains(VK.RShift), ref _swallowingDelete, HotkeyAction.ToggleVanish, mask: false);
+            if (decision.Action is not HotkeyAction.ToggleVanish) return decision;
+            var now = _clock();
+            if (now - _lastVanish < VanishDebounceSeconds) return decision with { Action = null }; // still swallowed
+            _lastVanish = now;
+            return decision;
+        }
         if (vk == VK.Space) return Trigger(down, Ctrl && Win, ref _swallowingSpace, HotkeyAction.ToggleChat, mask: true);
         return default;
     }

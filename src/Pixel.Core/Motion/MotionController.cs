@@ -24,10 +24,14 @@ public sealed class CatBody
     public Platform? StandingOn { get; internal set; }
 }
 
-/// <summary>Walking, jumping, falling and riding windows inside the work area.</summary>
+/// <summary>
+/// Moves the cat inside the work area. Two styles: <see cref="FreeRoam"/> (walk anywhere on screen, no gravity —
+/// the default) or gravity mode (floor and window tops: walking, jumping, falling, riding windows).
+/// </summary>
 public sealed class MotionController(Bounds area)
 {
     public const double HalfWidth = 24;
+    public const double FreePounceReach = 260;
     public const double Gravity = 2600;
     public const double WalkSpeed = 70;
     public const double RunSpeed = 260;
@@ -41,6 +45,13 @@ public sealed class MotionController(Bounds area)
     public CatBody Body { get; } = new();
     public MotionMode Mode { get; private set; } = MotionMode.Idle;
     public double? TargetX { get; private set; }
+    public double? TargetY { get; private set; }
+
+    /// <summary>Walk anywhere on screen (middle, sides, top) instead of only the floor and window tops.</summary>
+    public bool FreeRoam { get; set; }
+
+    /// <summary>Height of the cat above its feet, so free roaming never pushes it off the top of the screen.</summary>
+    public double BodyHeight { get; set; }
     public Bounds Area => _area;
     private Platform Ground => new(_area.Left, _area.Right, _area.Bottom);
 
@@ -48,12 +59,24 @@ public sealed class MotionController(Bounds area)
     {
         _area = area;
         Body.X = ClampX(Body.X);
+        if (FreeRoam)
+        {
+            Body.Y = ClampY(Body.Y);
+            return;
+        }
         if (Body.Y > area.Bottom) Body.Y = area.Bottom;
         if (Body.StandingOn is { Owner: 0 }) Unground(); // ground moved; re-land next step
     }
 
     public void Place(double x, double y)
     {
+        if (FreeRoam)
+        {
+            Body.X = ClampX(x);
+            Body.Y = ClampY(y);
+            RestHere();
+            return;
+        }
         Body.X = ClampX(x);
         Body.Y = Math.Min(y, _area.Bottom);
         Body.Vx = Body.Vy = 0;
@@ -69,10 +92,31 @@ public sealed class MotionController(Bounds area)
 
     public void WalkTo(double x, double speed = WalkSpeed)
     {
+        if (FreeRoam)
+        {
+            WalkToPoint(x, Body.Y, speed);
+            return;
+        }
         if (Mode is MotionMode.Held or MotionMode.Airborne) return;
         TargetX = ClampX(x);
         _speed = speed;
         Mode = MotionMode.Walking;
+    }
+
+    /// <summary>Free roaming: walk straight to any point. In gravity mode only the X matters.</summary>
+    public void WalkToPoint(double x, double y, double speed = WalkSpeed)
+    {
+        if (!FreeRoam)
+        {
+            WalkTo(x, speed);
+            return;
+        }
+        if (Mode == MotionMode.Held) return;
+        TargetX = ClampX(x);
+        TargetY = ClampY(y);
+        _speed = speed;
+        Mode = MotionMode.Walking;
+        if (Math.Abs(TargetX.Value - Body.X) > 1) Body.Facing = TargetX < Body.X ? Facing.Left : Facing.Right;
     }
 
     public void Stop()
@@ -80,6 +124,23 @@ public sealed class MotionController(Bounds area)
         if (Mode != MotionMode.Walking) return;
         Mode = MotionMode.Idle;
         TargetX = null;
+        TargetY = null;
+    }
+
+    /// <summary>Pounce at a point: a quick dash (free roaming, limited reach) or a hop along the floor (gravity).</summary>
+    public bool Pounce(double x, double y)
+    {
+        if (!FreeRoam) return Pounce(x);
+        var dx = x - Body.X;
+        var dy = y - Body.Y;
+        var dist = Math.Sqrt(dx * dx + dy * dy);
+        if (dist > FreePounceReach)
+        {
+            dx *= FreePounceReach / dist;
+            dy *= FreePounceReach / dist;
+        }
+        WalkToPoint(Body.X + dx, Body.Y + dy, RunSpeed * 1.6);
+        return true;
     }
 
     /// <summary>Ballistic jump that lands at <paramref name="x"/> on <paramref name="target"/>. False if out of reach.</summary>
@@ -122,12 +183,24 @@ public sealed class MotionController(Bounds area)
     {
         if (Mode != MotionMode.Held) return;
         Body.X = ClampX(Body.X);
+        if (FreeRoam)
+        {
+            Body.Y = ClampY(Body.Y);
+            RestHere(); // free roaming: dropped cats stay exactly where they were let go
+            return;
+        }
         Mode = MotionMode.Airborne;
     }
 
     public void Step(double dt, IReadOnlyList<Platform> platforms)
     {
         if (Mode == MotionMode.Held) return;
+        if (FreeRoam)
+        {
+            if (!Body.Grounded) RestHere();
+            if (Mode == MotionMode.Walking) WalkFree(dt);
+            return;
+        }
 
         if (Body.Grounded)
         {
@@ -153,6 +226,41 @@ public sealed class MotionController(Bounds area)
             if (landing is null || p.Y < landing.Value.Y) landing = p;
         }
         if (landing is { } l) Land(l);
+    }
+
+    private void WalkFree(double dt)
+    {
+        if (TargetX is not { } tx || TargetY is not { } ty)
+        {
+            Mode = MotionMode.Idle;
+            return;
+        }
+        var dx = tx - Body.X;
+        var dy = ty - Body.Y;
+        var dist = Math.Sqrt(dx * dx + dy * dy);
+        var step = _speed * dt;
+        if (dist <= step)
+        {
+            Body.X = tx;
+            Body.Y = ty;
+            Mode = MotionMode.Idle;
+            TargetX = TargetY = null;
+            return;
+        }
+        Body.X = ClampX(Body.X + dx / dist * step);
+        Body.Y = ClampY(Body.Y + dy / dist * step);
+        if (Math.Abs(dx) > 1) Body.Facing = dx < 0 ? Facing.Left : Facing.Right;
+    }
+
+    /// <summary>Free roaming has no gravity: wherever the cat is, it is standing.</summary>
+    private void RestHere()
+    {
+        Body.Vx = Body.Vy = 0;
+        Body.Grounded = true;
+        Body.StandingOn = null;
+        _leapTargetX = null;
+        Mode = MotionMode.Idle;
+        TargetX = TargetY = null;
     }
 
     private void Walk(double dt)
@@ -234,4 +342,6 @@ public sealed class MotionController(Bounds area)
     }
 
     private double ClampX(double x) => Math.Clamp(x, _area.Left + HalfWidth, _area.Right - HalfWidth);
+
+    private double ClampY(double y) => Math.Clamp(y, Math.Min(_area.Top + BodyHeight, _area.Bottom), _area.Bottom);
 }
