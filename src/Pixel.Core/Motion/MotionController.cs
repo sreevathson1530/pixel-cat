@@ -12,6 +12,9 @@ public enum Facing { Right, Left }
 
 public enum MotionMode { Idle, Walking, Airborne, Held }
 
+/// <summary>What a thrown cat bounced off.</summary>
+public enum Bump { Wall, Ceiling, Floor }
+
 /// <summary>Cat position: X is the horizontal centre, Y is the bottom of the feet (DIPs, y grows down).</summary>
 public sealed class CatBody
 {
@@ -38,9 +41,21 @@ public sealed class MotionController(Bounds area)
     public const double MaxJumpHeight = 450;
     private const double SnapTolerance = 14;
 
+    /// <summary>Speed kept bouncing off a side of the screen, the top, or the floor (which also slows it sideways).</summary>
+    public const double WallBounce = 0.7, CeilingBounce = 0.5, FloorBounce = 0.45, FloorFriction = 0.7;
+
+    /// <summary>Landing slower than this (DIP/s) just lands; faster makes a little hop.</summary>
+    public const double MinBounceSpeed = 300;
+
+    /// <summary>A throw always ends within this long, whatever happens.</summary>
+    public const double MaxFlightSeconds = 6;
+
     private Bounds _area = area;
     private double _speed = WalkSpeed;
     private double? _leapTargetX;
+    private bool _flying;
+    private double _flightTime;
+    private readonly List<Bump> _bumps = [];
 
     public CatBody Body { get; } = new();
     public MotionMode Mode { get; private set; } = MotionMode.Idle;
@@ -53,6 +68,16 @@ public sealed class MotionController(Bounds area)
     /// <summary>Height of the cat above its feet, so free roaming never pushes it off the top of the screen.</summary>
     public double BodyHeight { get; set; }
     public Bounds Area => _area;
+
+    /// <summary>Thrown and still in the air (bouncing around), in either movement style.</summary>
+    public bool Flying => _flying;
+
+    /// <summary>Every bounce so far (never resets), so watchers can tell a new one happened.</summary>
+    public int BumpCount { get; private set; }
+    public Bump? LastBump { get; private set; }
+
+    /// <summary>The bounces of the current (or last) throw, in order.</summary>
+    public IReadOnlyList<Bump> BumpsSeen => _bumps;
     private Platform Ground => new(_area.Left, _area.Right, _area.Bottom);
 
     public void SetArea(Bounds area)
@@ -70,6 +95,7 @@ public sealed class MotionController(Bounds area)
 
     public void Place(double x, double y)
     {
+        _flying = false;
         if (FreeRoam)
         {
             Body.X = ClampX(x);
@@ -97,7 +123,7 @@ public sealed class MotionController(Bounds area)
             WalkToPoint(x, Body.Y, speed);
             return;
         }
-        if (Mode is MotionMode.Held or MotionMode.Airborne) return;
+        if (Mode is MotionMode.Held or MotionMode.Airborne || _flying) return;
         TargetX = ClampX(x);
         _speed = speed;
         Mode = MotionMode.Walking;
@@ -111,7 +137,7 @@ public sealed class MotionController(Bounds area)
             WalkTo(x, speed);
             return;
         }
-        if (Mode == MotionMode.Held) return;
+        if (Mode == MotionMode.Held || _flying) return;
         TargetX = ClampX(x);
         TargetY = ClampY(y);
         _speed = speed;
@@ -171,6 +197,7 @@ public sealed class MotionController(Bounds area)
     public void Hold(double x, double y)
     {
         _leapTargetX = null;
+        _flying = false; // caught mid-air
         Mode = MotionMode.Held;
         TargetX = null;
         Body.X = x;
@@ -192,9 +219,35 @@ public sealed class MotionController(Bounds area)
         Mode = MotionMode.Airborne;
     }
 
+    /// <summary>
+    /// Let go with a fling: the cat flies with gravity, bounces off the sides and top of the screen, makes a few
+    /// shrinking hops on landing, then settles. Works in both movement styles.
+    /// </summary>
+    public void Throw(double vx, double vy)
+    {
+        if (Mode != MotionMode.Held) return;
+        Body.X = ClampX(Body.X);
+        Body.Y = Math.Clamp(Body.Y, Ceiling, _area.Bottom);
+        Body.Vx = vx;
+        Body.Vy = vy;
+        if (Math.Abs(vx) > 1) Body.Facing = vx < 0 ? Facing.Left : Facing.Right;
+        _leapTargetX = null;
+        TargetX = TargetY = null;
+        Unground();
+        Mode = MotionMode.Airborne;
+        _flying = true;
+        _flightTime = 0;
+        _bumps.Clear();
+    }
+
     public void Step(double dt, IReadOnlyList<Platform> platforms)
     {
         if (Mode == MotionMode.Held) return;
+        if (_flying)
+        {
+            Fly(dt, platforms);
+            return;
+        }
         if (FreeRoam)
         {
             if (!Body.Grounded) RestHere();
@@ -228,6 +281,87 @@ public sealed class MotionController(Bounds area)
         if (landing is { } l) Land(l);
     }
 
+    /// <summary>Highest the feet can be so the whole cat stays on screen.</summary>
+    private double Ceiling => Math.Min(_area.Top + Math.Max(BodyHeight, 40), _area.Bottom);
+
+    private void Fly(double dt, IReadOnlyList<Platform> platforms)
+    {
+        _flightTime += dt;
+        var prevY = Body.Y;
+        Body.Vy += Gravity * dt;
+        var x = Body.X + Body.Vx * dt;
+        var y = Body.Y + Body.Vy * dt;
+
+        double left = _area.Left + HalfWidth, right = _area.Right - HalfWidth;
+        if ((x <= left && Body.Vx < 0) || (x >= right && Body.Vx > 0))
+        {
+            Body.Vx = -Body.Vx * WallBounce;
+            Bumped(Bump.Wall);
+        }
+        Body.X = Math.Clamp(x, left, right);
+        if (Math.Abs(Body.Vx) > 30) Body.Facing = Body.Vx < 0 ? Facing.Left : Facing.Right;
+
+        if (y < Ceiling)
+        {
+            y = Ceiling;
+            if (Body.Vy < 0)
+            {
+                Body.Vy = -Body.Vy * CeilingBounce;
+                Bumped(Bump.Ceiling);
+            }
+        }
+        Body.Y = y;
+
+        if (Body.Vy > 0)
+        {
+            // Free roaming lands on the bottom of the screen; floor mode also on window tops.
+            Platform? landing = null;
+            foreach (var p in FreeRoam ? [Ground] : platforms.Append(Ground))
+            {
+                if (!p.Covers(Body.X) || p.Y < prevY - 0.001 || p.Y > Body.Y) continue;
+                if (landing is null || p.Y < landing.Value.Y) landing = p;
+            }
+            if (landing is { } l)
+            {
+                Body.Y = l.Y;
+                if (Body.Vy > MinBounceSpeed)
+                {
+                    Body.Vy = -Body.Vy * FloorBounce;
+                    Body.Vx *= FloorFriction;
+                    Bumped(Bump.Floor);
+                }
+                else
+                {
+                    EndFlight(l);
+                    return;
+                }
+            }
+        }
+        if (_flightTime >= MaxFlightSeconds) EndFlight(null);
+    }
+
+    private void Bumped(Bump b)
+    {
+        _bumps.Add(b);
+        LastBump = b;
+        BumpCount++;
+    }
+
+    /// <summary>Lands on <paramref name="surface"/>; with none (time's up) free roaming rests where it is, floor mode falls normally.</summary>
+    private void EndFlight(Platform? surface)
+    {
+        _flying = false;
+        if (FreeRoam)
+        {
+            if (surface is { } s) Body.Y = s.Y;
+            Body.Y = ClampY(Body.Y);
+            RestHere();
+            return;
+        }
+        if (surface is { } p) Land(p);
+        else Body.Vx = 0; // keep falling straight down with ordinary gravity
+    }
+
     private void WalkFree(double dt)
     {
         if (TargetX is not { } tx || TargetY is not { } ty)
@@ -255,6 +389,7 @@ public sealed class MotionController(Bounds area)
     /// <summary>Free roaming has no gravity: wherever the cat is, it is standing.</summary>
     private void RestHere()
     {
+        _flying = false;
         Body.Vx = Body.Vy = 0;
         Body.Grounded = true;
         Body.StandingOn = null;
@@ -325,6 +460,7 @@ public sealed class MotionController(Bounds area)
 
     private void Land(Platform p)
     {
+        _flying = false;
         // Integration drifts a few pixels; finish a leap exactly where it was aimed.
         if (_leapTargetX is { } tx && Math.Abs(tx - Body.X) < 20 && p.Covers(tx)) Body.X = tx;
         _leapTargetX = null;

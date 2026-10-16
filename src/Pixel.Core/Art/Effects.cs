@@ -153,6 +153,20 @@ internal static class Effects
                 Glyph(fx, hx - 3, hy + 3 - ((f + 2) % 4) * 2, Ix.FxHeart, ["z.z", "zzz", ".z."]);
             }
 
+            if (p.Effect.HasFlag(Effect.Stars))
+            {
+                // Three little stars circling just above the head; the ring turns a quarter each frame.
+                var cx = hx + CatRenderer.HeadW / 2.0;
+                var cy = hy - 1.5;
+                for (var i = 0; i < 3; i++)
+                {
+                    var a = (f / 4.0 + i / 3.0) * 2 * Math.PI;
+                    var sx = (int)Math.Round(cx + Math.Cos(a) * 9) - 1;
+                    var sy = (int)Math.Round(cy + Math.Sin(a) * 2.5) - 1;
+                    Glyph(fx, sx, sy, Ix.FxYellow, [".z.", "zzz", ".z."]);
+                }
+            }
+
             if (p.Effect.HasFlag(Effect.Steam))
             {
                 for (var i = 0; i < 3; i++)

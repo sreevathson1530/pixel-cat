@@ -4,7 +4,7 @@ public enum AnimationId
 {
     Idle, Walk, Run, Jump, Fall, Sleep, Groom, Stretch, Purr, Crouch, Knead, Overheat, Paper,
     Working, Celebrate, Wave, Alert, Confused, Peek, Dangle, PoofOut, PoofIn, Talk, Thinking,
-    LaptopOut, LaptopIdle, LaptopAway,
+    LaptopOut, LaptopIdle, LaptopAway, Bonk, Dazed,
 }
 
 public sealed record Frame(CatPose Pose, int Ms);
@@ -206,6 +206,24 @@ public static class Animations
         Add(AnimationId.Talk, true,
             new(Sit with { Mouth = MouthState.Open }, 140),
             new(Sit, 160));
+
+        // Thrown into a side of the screen: eyes squeezed shut, mouth open, stars.
+        var bonk = new CatPose(BodyShape.Fall, Eyes: EyeState.Closed, Mouth: MouthState.Open, Effect: Effect.Stars);
+        Add(AnimationId.Bonk, false,
+            new(bonk with { EffectFrame = 0 }, 150),
+            new(bonk with { EffectFrame = 1, HeadDx = -1 }, 150));
+
+        // Landed after a throw: sits dizzy with stars circling its head, then shakes it off.
+        var dizzy = Sit with { Eyes = EyeState.Half, Effect = Effect.Stars };
+        Add(AnimationId.Dazed, false,
+            new(dizzy with { EffectFrame = 0, HeadDx = 1 }, 170),
+            new(dizzy with { EffectFrame = 1 }, 170),
+            new(dizzy with { EffectFrame = 2, HeadDx = -1 }, 170),
+            new(dizzy with { EffectFrame = 3 }, 170),
+            new(Sit with { Eyes = EyeState.Closed, BodyDx = 1 }, 80),
+            new(Sit with { Eyes = EyeState.Closed, BodyDx = -1 }, 80),
+            new(Sit with { Eyes = EyeState.Closed, BodyDx = 1 }, 80),
+            new(Sit with { Eyes = EyeState.Happy }, 120));
 
         var think = Sit with { Effect = Effect.Dots, HeadDx = 1 };
         Add(AnimationId.Thinking, true,

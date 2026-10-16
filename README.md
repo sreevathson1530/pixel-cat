@@ -28,7 +28,7 @@ folder, `%APPDATA%\Pixel` and `Documents\pixel`.
 |---|---|
 | `Ctrl + Win + Space` | Open / close the chat panel beside the cat. Pixel reads your screen as it opens. |
 | `Ctrl + Right Shift + Delete` | Pixel vanishes in a poof (chat saved, screen watching off, brain unloaded). Press again: back with a fresh chat. |
-| Drag the cat | It dangles; drop it and it stays put until you **double-click** it. |
+| Drag the cat | It dangles. Let go gently and it stays put; **fling it** and it flies, bonks off the sides of the screen, bounces on the floor and sits there dizzy for a second. Either way it stays where it ends up until you **double-click** it. |
 | Move the mouse back and forth over its head | Purring. 💕 |
 | Click the cat while it shows **!** | Asks Pixel about the error it spotted on your screen. |
 | Tray icon (the cat's face) | Chat, Stay put, History, Notes, Settings, Connect Claude Code, Start with Windows, Quit. |

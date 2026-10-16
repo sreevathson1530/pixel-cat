@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
 using Pixel.App.Native;
+using Pixel.App.Shell;
 using Pixel.Core.Art;
 using Pixel.Core.Behaviour;
 using Activity = Pixel.Core.Behaviour.Activity;
@@ -36,6 +37,7 @@ internal sealed class CatController
     private Point _lastCursor;
     private (Frame Frame, RenderOptions Options)? _drawn;
     private bool _pressed, _dragging;
+    private readonly ThrowTracker _throw = new();
     private Point _pressAt;
     private Action? _onVanished;
     private bool _userStaying;
@@ -176,7 +178,11 @@ internal sealed class CatController
         _meter.OnMouse(cursor.X, cursor.Y, now);
         _meter.Update(now);
 
-        if (_dragging) _motion.Hold(cursor.X, cursor.Y + (CatRenderer.Height - 5) * _window.Width / CatRenderer.Width);
+        if (_dragging)
+        {
+            _motion.Hold(cursor.X, cursor.Y + (CatRenderer.Height - 5) * _window.Width / CatRenderer.Width);
+            _throw.Add(now, _motion.Body.X, _motion.Body.Y);
+        }
 
         var center = new Point(_motion.Body.X, _motion.Body.Y - _window.Height / 2);
         var distance = (cursor - center).Length;
@@ -295,6 +301,7 @@ internal sealed class CatController
         }
         _pressed = true;
         _pressAt = CursorDip();
+        _throw.Reset();
         _window.CaptureMouse();
     }
 
@@ -310,8 +317,18 @@ internal sealed class CatController
         _window.ReleaseMouseCapture();
         if (_dragging)
         {
-            _motion.Release();
-            _userStaying = true; // dropped: stay here until double-clicked
+            // A flick as you let go throws the cat (it bounces off the screen's sides); otherwise it's a drop.
+            if (_throw.Release(Now) is var (vx, vy))
+            {
+                _motion.Throw(vx, vy);
+                Log.Info($"cat thrown at {_throw.LastSpeed:0} DIP/s ({vx:0}, {vy:0})");
+            }
+            else
+            {
+                _motion.Release();
+                Log.Info($"cat dropped ({_throw.LastSpeed:0} DIP/s)");
+            }
+            _userStaying = true; // stays where it ends up until double-clicked
         }
         else if (_pressed)
         {

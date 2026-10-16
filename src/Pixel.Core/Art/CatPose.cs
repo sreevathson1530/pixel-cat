@@ -25,6 +25,7 @@ public enum Effect
     Paper = 1 << 8,
     Poof = 1 << 9,
     Dots = 1 << 10,
+    Stars = 1 << 11,
 }
 
 /// <summary>Everything needed to draw one frame of the cat.</summary>

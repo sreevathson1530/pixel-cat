@@ -27,6 +27,12 @@ public sealed class PetDirector(MotionController motion, Roamer roamer)
     private double _huntTargetX, _huntTargetY;
     private bool _dashing;
 
+    /// <summary>How long the "bonk" shows after a thrown cat hits a side or the top of the screen.</summary>
+    private const double BonkSeconds = 0.3;
+    private int _seenBumps;
+    private bool _wasFlying;
+    private double _bonkUntil = double.NegativeInfinity, _dazedUntil = double.NegativeInfinity;
+
     public AnimationId Animation { get; private set; } = AnimationId.Idle;
     public double AnimationStart { get; private set; }
     public Activity Activity { get; private set; } = Activity.Roam;
@@ -123,16 +129,36 @@ public sealed class PetDirector(MotionController motion, Roamer roamer)
         }
 
         motion.Step(dt, platforms);
+        ReactToThrow(now);
 
         var airborne = !motion.Body.Grounded && motion.Mode != MotionMode.Held;
         if (airborne && activity is not (Activity.Dangle or Activity.PoofOut or Activity.PoofIn))
-            anim = motion.Body.Vy < 0 ? AnimationId.Jump : AnimationId.Fall;
+            anim = now < _bonkUntil ? AnimationId.Bonk : motion.Body.Vy < 0 ? AnimationId.Jump : AnimationId.Fall;
+        else if (now < _dazedUntil && activity is Activity.Roam or Activity.Hunt or Activity.Purr or Activity.Paper)
+        {
+            anim = AnimationId.Dazed; // dizzy for a moment after a throw; nothing else until it shakes it off
+            motion.Stop();
+            _pounceAt = null;
+        }
 
         if (anim != Animation)
         {
             Animation = anim;
             AnimationStart = now;
         }
+    }
+
+    /// <summary>A bonk for each new bounce off a side or the top; a daze once a throw comes to rest.</summary>
+    private void ReactToThrow(double now)
+    {
+        if (motion.BumpCount != _seenBumps)
+        {
+            if (motion.LastBump is Bump.Wall or Bump.Ceiling) _bonkUntil = now + BonkSeconds;
+            _seenBumps = motion.BumpCount;
+        }
+        if (_wasFlying && !motion.Flying && motion.Mode != MotionMode.Held)
+            _dazedUntil = now + Animations.Get(AnimationId.Dazed).TotalMs / 1000.0;
+        _wasFlying = motion.Flying;
     }
 
     /// <summary>
