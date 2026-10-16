@@ -69,11 +69,11 @@ public sealed class LlamaBrainTests : IDisposable
     }
 
     [Fact]
-    public async Task Missing_model_explains_where_to_put_it()
+    public async Task Missing_model_says_where_one_belongs_so_the_chat_can_offer_a_download()
     {
         var (b, l, _) = Make(new ModelStatus.Missing(@"C:\models"), new MemoryVerdict.Ok());
-        var e = Assert.IsType<ErrorEvent>(Assert.Single(await Ask(b)));
-        Assert.Contains(@"C:\models", e.Message);
+        var e = Assert.IsType<ModelMissingEvent>(Assert.Single(await Ask(b)));
+        Assert.Equal(@"C:\models", e.Directory);
         Assert.Equal(0, l.Launches);
     }
 

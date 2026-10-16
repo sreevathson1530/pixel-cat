@@ -30,7 +30,7 @@ public sealed class LlamaBrain(
                 yield return new ErrorEvent($"My brain is still downloading ({d.File}). Ask me again once it's done! 🐾");
                 yield break;
             case ModelStatus.Missing m:
-                yield return new ErrorEvent($"I can't find my brain. Put the .gguf model file in {m.Directory} or choose it in Settings.");
+                yield return new ModelMissingEvent(m.Directory); // the chat offers to download one
                 yield break;
             default:
                 yield break;

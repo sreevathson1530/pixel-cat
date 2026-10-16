@@ -27,6 +27,9 @@ public sealed record ToolCallEvent(ToolInvocation Call) : BrainEvent;
 public sealed record DoneEvent : BrainEvent;
 public sealed record ErrorEvent(string Message) : BrainEvent;
 
+/// <summary>No model on this PC yet; <paramref name="Directory"/> is where one is expected (and would be downloaded to).</summary>
+public sealed record ModelMissingEvent(string Directory) : BrainEvent;
+
 /// <summary>How far the server has got reading the prompt (long screen text can take a while).</summary>
 public sealed record ProgressEvent(int Processed, int Total) : BrainEvent
 {

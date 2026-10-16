@@ -40,6 +40,7 @@ internal sealed class ChatController
     private bool _opening;
     private StallWatchdog? _watchdog;
     private readonly ToolExecutor _tools;
+    private readonly ModelDownloader _downloader = new(new System.Net.Http.HttpClient { Timeout = Timeout.InfiniteTimeSpan });
     private readonly HistoryStore? _history;
     private long? _historyId;
 
@@ -352,6 +353,7 @@ internal sealed class ChatController
         Remember(ChatRole.User, text);
         SetCatChat(ChatState.Thinking);
         var answer = new System.Text.StringBuilder();
+        var offeredBrain = false;
         try
         {
             // The model may call tools; run them and let it continue (at most a few rounds).
@@ -359,6 +361,7 @@ internal sealed class ChatController
             {
                 var calls = new List<ToolInvocation>();
                 var roundText = new System.Text.StringBuilder();
+                string? missingBrainIn = null;
                 await foreach (var ev in _brain.AskAsync(_conversation, screen, cts.Token))
                 {
                     switch (ev)
@@ -388,7 +391,19 @@ internal sealed class ChatController
                         case ErrorEvent e:
                             _window!.Post(new { type = "error", text = e.Message });
                             return;
+                        case ModelMissingEvent m:
+                            missingBrainIn = m.Directory;
+                            break;
                     }
+                }
+
+                if (missingBrainIn is not null)
+                {
+                    // First run (or the model was deleted): offer to fetch one, then answer the same question.
+                    if (offeredBrain || !await OfferBrainDownloadAsync(missingBrainIn, watchdog, cts.Token)) return;
+                    offeredBrain = true;
+                    round--;
+                    continue;
                 }
 
                 if (calls.Count == 0)
@@ -425,6 +440,69 @@ internal sealed class ChatController
             if (ReferenceEquals(_watchdog, watchdog)) _watchdog = null;
             if (ReferenceEquals(_turn, cts)) SetCatChat(ChatState.None);
             _window?.Post(new { type = "status", text = "here for you", busy = false });
+        }
+    }
+
+    /// <summary>
+    /// Asks to download the default brain into <paramref name="dir"/>, shows progress, and switches to it.
+    /// True once it's ready; false (with the reason shown) if declined or failed. Partial downloads are kept, so
+    /// asking again resumes.
+    /// </summary>
+    private async Task<bool> OfferBrainDownloadAsync(string dir, StallWatchdog watchdog, CancellationToken ct)
+    {
+        // Windows-style sizes (like Explorer shows); small amounts in MB so a nearly-finished download never reads "0.0 GB".
+        static string Gb(long b) => b >= 1L << 30 ? $"{b / (double)(1L << 30):0.0} GB" : $"{Math.Max(1, b >> 20)} MB";
+        var pack = ModelPack.VisionDefault;
+        var have = ModelDownloader.BytesPresent(pack, dir);
+        var left = pack.TotalBytes - have;
+        var detail = have > 0
+            ? $"Resume downloading {pack.Title}: {Gb(left)} left, from huggingface.co into {dir}."
+            : $"{pack.Title} is {Gb(pack.TotalBytes)} from huggingface.co, saved in {dir}. It's a one-time download: after that I think on your PC and nothing leaves it.";
+        if (!await ConfirmAsync("I don't have a brain yet. Download one?", detail))
+        {
+            _window?.Post(new { type = "error", text = $"Okay! I can't answer without a brain. Ask me again to download one, or put a .gguf model in {dir} and pick it in Settings." });
+            return false;
+        }
+
+        try
+        {
+            if (new DriveInfo(Path.GetPathRoot(Path.GetFullPath(dir))!).AvailableFreeSpace is var free && free < left + (512L << 20))
+            {
+                _window?.Post(new { type = "error", text = $"My brain needs {Gb(left)} of disk space, but only {Gb(free)} is free on that drive. Free some space and ask me again." });
+                return false;
+            }
+        }
+        catch (Exception e) when (e is ArgumentException or IOException or UnauthorizedAccessException)
+        {
+            Log.Info($"free-space check skipped: {e.Message}");
+        }
+
+        var (id, _) = ShowAction($"Downloading {pack.Title}", $"{Gb(pack.TotalBytes)} from huggingface.co", needsConfirm: false);
+        var progress = new Progress<DownloadProgress>(p =>
+        {
+            watchdog.Pet();
+            _window?.Post(new { type = "status", text = $"downloading my brain… {p.Fraction:P0} ({Gb(p.Done)} of {Gb(p.Total)})", busy = true });
+        });
+        try
+        {
+            Log.Info($"brain download: starting ({Gb(have)} already here)");
+            var path = await _downloader.DownloadAsync(pack, dir, progress, ct);
+            _host.UpdateSettings(_host.Settings with { ModelPath = path });
+            Log.Info("brain download: done");
+            _window?.Post(new { type = "actionResult", id, ok = true, text = "Got my brain! Thinking about your question now…" });
+            return true;
+        }
+        catch (ModelDownloadException e)
+        {
+            Log.Info($"brain download failed: {e.Message}");
+            _window?.Post(new { type = "actionResult", id, ok = false, text = e.Message });
+            _window?.Post(new { type = "error", text = e.Message });
+            return false;
+        }
+        catch (OperationCanceledException)
+        {
+            _window?.Post(new { type = "actionResult", id, ok = false, text = "Paused. Ask me again to continue the download." });
+            throw;
         }
     }
 

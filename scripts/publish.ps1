@@ -20,5 +20,11 @@ foreach ($b in $Backends) {
     robocopy $src (Join-Path $Out "runtime\llama\$b") /E /NFL /NDL /NJH /NJS /NP | Out-Null
     if ($LASTEXITCODE -ge 8) { throw "copying $b failed (robocopy $LASTEXITCODE)" }
 }
+# Licenses travel with the app: Pixel's own, the third-party notices and their full texts.
+$repo = Join-Path $PSScriptRoot '..'
+Copy-Item (Join-Path $repo 'LICENSE') (Join-Path $Out 'LICENSE.txt') -Force
+Copy-Item (Join-Path $repo 'THIRD-PARTY-NOTICES.md') $Out -Force
+robocopy (Join-Path $repo 'licenses') (Join-Path $Out 'licenses') /E /NFL /NDL /NJH /NJS /NP | Out-Null
+if ($LASTEXITCODE -ge 8) { throw "copying licenses failed (robocopy $LASTEXITCODE)" }
 $global:LASTEXITCODE = 0
 Write-Host "Published to $(Resolve-Path $Out)"
