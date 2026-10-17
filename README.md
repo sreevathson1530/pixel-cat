@@ -133,6 +133,10 @@ ask something without sharing your screen.
    extract it **over your existing Pixel folder** (choose *Replace the files* if asked).
 3. Start `Pixel.exe` again. Your brain (`Documents\pixel`), settings, notes and chat history (`%APPDATA%\Pixel`) are kept.
 
+Coming from **1.0.0**, Pixel keeps the slower 4B brain you already have. To switch to the faster 2B brain: quit Pixel,
+delete `%APPDATA%\Pixel\settings.json` (this resets your settings) and the two files with `Qwen3VL-4B` in their
+names in `Documents\pixel`, then start Pixel, ask anything and click **Do it**.
+
 ## Uninstall
 
 1. Tray icon → **Settings…** → untick **Start with Windows** → Save.
