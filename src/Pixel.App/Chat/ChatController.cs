@@ -34,6 +34,7 @@ internal sealed class ChatController
     private const int MaxToolRounds = 3;
     private static readonly TimeSpan StallLimit = TimeSpan.FromMinutes(4);
     private static readonly TimeSpan ScreenFreshness = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan ReuseLook = TimeSpan.FromSeconds(90);
     private const string StallMessage =
         "Mrrp… my brain went quiet for 4 minutes, so I stopped. Your PC is probably short on free memory — "
         + "close a few apps, or pick the smaller brain in Settings, then ask again.";
@@ -107,7 +108,8 @@ internal sealed class ChatController
     /// <summary>Validates, confirms (when needed) and runs one tool call; returns the result text for the model.</summary>
     private async Task<string> RunToolAsync(ToolInvocation call)
     {
-        var request = ToolArgs.Parse(call, p => File.Exists(p) || Directory.Exists(p));
+        var asked = _conversation.LastOrDefault(m => m.Role == ChatRole.User)?.Content;
+        var request = ToolArgs.Parse(call, p => File.Exists(p) || Directory.Exists(p), asked);
         var action = _tools.Prepare(call.Name, request); // refused actions skip confirmation and report why
         var (id, answer) = ShowAction(action.Title, action.Detail, action.NeedsConfirm);
         if (!await WaitForUserAsync(answer))
@@ -159,6 +161,17 @@ internal sealed class ChatController
         _ = WarmUpAsync();
     }
 
+    /// <summary>
+    /// Loads the brain and has it read its instructions now, so the first question doesn't wait for that.
+    /// Not tied to the panel: closing the chat doesn't cancel it.
+    /// </summary>
+    public async Task PreloadAsync()
+    {
+        var watch = Stopwatch.StartNew();
+        var outcome = await _brain.WarmUpAsync(_conversation.ToArray(), null, CancellationToken.None);
+        Log.Info($"preload: {outcome} ({watch.Elapsed.TotalSeconds:0.0}s)");
+    }
+
     /// <summary>Lets the brain load and read the screen while you type, so the answer starts sooner.</summary>
     private async Task WarmUpAsync()
     {
@@ -189,16 +202,17 @@ internal sealed class ChatController
     }
 
     /// <summary>
-    /// The screen as it is now: looks again when the last look is a few seconds old, since you may have scrolled or
-    /// switched windows while the panel was open (the panel itself is invisible to the capture).
+    /// The screen to answer about. The look taken when the chat opened is kept while you're still in the same app and
+    /// it's under <see cref="ReuseLook"/> old: the brain already read it while you typed, and a few changed words (a
+    /// clock, a busy terminal) aren't worth reading the whole screen again. Switching to another app takes a new look.
     /// </summary>
     private async Task<ScreenSnapshot?> FreshScreenAsync()
     {
         var s = await _screen;
         if (s is not null && DateTimeOffset.Now - s.At < ScreenFreshness) return s;
         var fresh = await SafeSnapshot();
-        // Nothing changed: keep the earlier look — same screenshot bytes, which the brain may already have read.
-        if (fresh is not null && s is not null && fresh.SameScreen(s)) fresh = s with { At = fresh.At };
+        if (fresh is not null && s is not null && (fresh.SameScreen(s) || (fresh.ProcessName == s.ProcessName && fresh.At - s.At < ReuseLook)))
+            return s; // same look, same screenshot bytes: the brain's cached reading still applies
         _screen = Task.FromResult(fresh);
         _window?.Post(new { type = "context", text = DescribeContext(fresh) });
         return fresh;

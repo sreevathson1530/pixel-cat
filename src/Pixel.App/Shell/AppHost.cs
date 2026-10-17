@@ -79,6 +79,7 @@ internal sealed class AppHost : IDisposable
         Brain = new BrainService(() => Settings, msg => Chat.ConfirmAsync("Load my brain anyway?", msg), ToolDefinitions.All);
         if (Environment.GetEnvironmentVariable("PIXEL_FAKE_BRAIN") != "1") Chat.UseBrain(Brain.Brain);
         Vanishing += Brain.Unload;
+        Revived += () => WakeBrainSoon(2);
         Cat.Clicked += OnCatClicked;
 
         _hooks = new HookThread(new HotkeyDetector(), OnHotkey, Cat.Post);
@@ -108,6 +109,26 @@ internal sealed class AppHost : IDisposable
         // Only the installed build registers itself; a dev build under bin\ never should.
         var devBuild = Environment.ProcessPath?.Contains(@"\bin\", StringComparison.OrdinalIgnoreCase) == true;
         if (!devBuild && Settings.StartWithWindows && !AutoStart.IsEnabled()) AutoStart.Set(true);
+
+        WakeBrainSoon(15); // let Windows finish starting up first
+    }
+
+    /// <summary>
+    /// When the brain is kept awake (the default), loads it in the background after <paramref name="seconds"/> and has
+    /// it read its instructions, so the first question doesn't wait for either. Silent: skipped when memory is short.
+    /// </summary>
+    public async void WakeBrainSoon(double seconds)
+    {
+        if (Settings.IdleUnloadMinutes > 0) return; // brain loads on demand instead
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(seconds));
+            if (!IsVanished) await Chat.PreloadAsync();
+        }
+        catch (Exception e)
+        {
+            Log.Error("brain preload", e);
+        }
     }
 
     /// <summary>Worker thread: look for errors in the active window and send the cat to them.</summary>

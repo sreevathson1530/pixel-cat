@@ -22,8 +22,9 @@ internal sealed class BrainService : IDisposable
     public BrainService(Func<Settings> settings, Func<string, Task<bool>> askUser, IReadOnlyList<ToolSpec> tools)
     {
         _settings = settings;
+        var idle = settings().IdleUnloadMinutes;
         Server = new ServerManager(_launcher, new HealthProbe(_probeHttp, () => Server!.Current, () => _launcher.LastProcessId),
-            () => DateTimeOffset.Now, TimeSpan.FromMinutes(Math.Max(1, settings().IdleUnloadMinutes)));
+            () => DateTimeOffset.Now, idle > 0 ? TimeSpan.FromMinutes(idle) : TimeSpan.MaxValue); // 0: never unload
         Brain = new LlamaBrain(
             Server,
             () => ModelLocator.Find(_settings().ModelDirectory, _settings().ModelPath),

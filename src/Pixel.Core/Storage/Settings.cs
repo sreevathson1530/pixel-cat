@@ -25,7 +25,11 @@ public sealed record Settings
 
     /// <summary>Extra llama-server flags. q8_0 KV cache halves its memory (needs flash attention).</summary>
     public string LlamaExtraArgs { get; init; } = "-fa on -ctk q8_0 -ctv q8_0";
-    public int IdleUnloadMinutes { get; init; } = 10;
+    /// <summary>
+    /// Minutes without questions before the brain is unloaded to give memory back. 0 (the default) keeps it loaded,
+    /// so answers start within a second instead of waiting for it to wake up.
+    /// </summary>
+    public int IdleUnloadMinutes { get; init; }
     public int WaterReminderMinutes { get; init; } = 60;
     public int StretchReminderMinutes { get; init; } = 45;
     public bool ProactiveErrors { get; init; } = true;

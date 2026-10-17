@@ -199,6 +199,18 @@ public class ServerManagerTests
     }
 
     [Fact]
+    public async Task A_brain_kept_awake_is_never_unloaded()
+    {
+        var l = new FakeLauncher();
+        var now = new DateTimeOffset(2026, 10, 17, 0, 0, 0, TimeSpan.Zero);
+        var m = new ServerManager(l, new FakeProbe(l), () => now, TimeSpan.MaxValue, pollDelay: TimeSpan.Zero);
+        await m.EnsureReadyAsync(Opts, CancellationToken.None);
+        now += TimeSpan.FromDays(30);
+        Assert.False(m.StopIfIdle());
+        Assert.True(m.IsAlive);
+    }
+
+    [Fact]
     public async Task Idle_server_is_stopped_after_timeout()
     {
         var (m, l, _, advance) = Make();

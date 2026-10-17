@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using Pixel.Core.Screen;
+using Pixel.Core.Tools;
 
 namespace Pixel.Core.Brain;
 
@@ -74,7 +75,9 @@ public sealed class LlamaBrain(
         yield return new StatusEvent(screen is null ? "thinking…"
             : vision && screen.Screenshot is not null ? "looking at your screen…" : "reading your screen & thinking…");
         var prompt = PromptBuilder.Build(conversation, screen, clock(), vision);
-        await foreach (var ev in client.StreamAsync(prompt, tools, ct))
+        // Only the tools this question asks for (none for ordinary questions) — see ToolRouter.
+        var question = conversation.LastOrDefault(m => m.Role == ChatRole.User)?.Content ?? "";
+        await foreach (var ev in client.StreamAsync(prompt, ToolRouter.For(question, tools), ct))
         {
             server.Touch();
             yield return ev;
@@ -102,7 +105,7 @@ public sealed class LlamaBrain(
         var vision = server.Current?.ProjectorPath is not null;
         // The question isn't typed yet: an empty one renders everything up to where its words will go.
         var prompt = PromptBuilder.Build([.. conversation, new ChatMessage(ChatRole.User, "")], screen, clock(), vision);
-        var failure = await client.PrefillAsync(prompt, tools, ct);
+        var failure = await client.PrefillAsync(prompt, [], ct); // most questions are offered no tools
         server.Touch();
         return failure is null ? $"read {(screen is null ? "the chat" : vision ? "the screenshot" : "the screen text")}" : $"failed: {failure}";
     }

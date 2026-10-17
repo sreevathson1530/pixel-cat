@@ -15,7 +15,7 @@ public sealed class SettingsStoreTests : IDisposable
         var s = SettingsStore.Load(PathOf("nope.json"));
         Assert.Equal(new Settings(), s);
         Assert.Equal("black", s.Palette);
-        Assert.Equal(10, s.IdleUnloadMinutes);
+        Assert.Equal(0, s.IdleUnloadMinutes); // brain stays awake
     }
 
     [Fact]

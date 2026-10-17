@@ -10,15 +10,17 @@ one-time brain download and web searches you approve.
 2. **Unzip** it somewhere permanent (for example `Documents\Pixel`) and double-click **`Pixel.exe`**.
    Windows may say *"Windows protected your PC"* because the app isn't code-signed — click **More info → Run anyway**.
 3. The cat appears and starts wandering. Press **`Ctrl + Win + Space`** and ask it anything.
-4. The first time, Pixel offers to **download its brain** (Qwen3-VL-4B, 2.7 GB from Hugging Face, saved in
-   `Documents\pixel`). Say yes, wait a few minutes, and it answers. If the download is interrupted, ask again and it
+4. The first time, Pixel offers to **download its brain** (Qwen3-VL-2B, 1.4 GB from Hugging Face, saved in
+   `Documents\pixel`). Say yes, wait a couple of minutes, and it answers. If the download is interrupted, ask again and it
    picks up where it left off.
 
-**You need:** Windows 10 (version 2004 or later) or Windows 11, 64-bit · about 4 GB of free RAM while it thinks ·
-about 3.5 GB of disk space · the WebView2 runtime (built into Windows 11; on Windows 10 it comes with Microsoft Edge,
+**You need:** Windows 10 (version 2004 or later) or Windows 11, 64-bit · about 2 GB of free RAM ·
+about 2 GB of disk space · the WebView2 runtime (built into Windows 11; on Windows 10 it comes with Microsoft Edge,
 or get it [from Microsoft](https://developer.microsoft.com/microsoft-edge/webview2/)).
 
-The first answer after waking up takes up to a minute on a typical laptop; follow-up questions are much faster.
+Pixel keeps its brain loaded and reads your screen while you type, so answers usually start within a second of
+pressing Enter (on a 2025 laptop: ~10 s to read the screen in the background while you type, then ~0.5 s to the
+first word and ~2 s for a short answer).
 Pixel starts with Windows — turn that off from the tray icon. To remove it: tray → Quit, then delete the Pixel
 folder, `%APPDATA%\Pixel` and `Documents\pixel`.
 
@@ -51,15 +53,18 @@ Anything that copies, opens, searches or reminds you later shows a **Do it?** ca
 ## Brain (local model)
 
 Pixel runs a [Qwen](https://huggingface.co/Qwen) model on your own PC with [llama.cpp](https://github.com/ggml-org/llama.cpp).
-The default, downloaded on first use, is **Qwen3-VL-4B**: it gets a screenshot with every question (plus the
-screen's text, read by Windows OCR), so it can describe pictures, photos and layouts as well as read code and errors.
+The default, downloaded on first use, is **Qwen3-VL-2B**: it gets a small screenshot with every question (plus the
+screen's exact text, read by Windows OCR), so it can describe pictures, photos and layouts as well as read code and
+errors — and it's quick: about 80 tokens/s reading and 27 tokens/s writing on a laptop CPU.
 
 Settings → **Brain** lists every `.gguf` model in `Documents\pixel` and `%USERPROFILE%\pixel-models`, labelled
 *sees pictures* or *reads text*. A model sees pictures when its vision projector (`mmproj-….gguf`) sits next to it.
-Bigger text-only models such as Qwen2.5-Coder 7B/14B are stronger at code but need 5–9 GB of free RAM.
+Bigger models are smarter but slower: Qwen3-VL-4B (also sees pictures) takes about twice as long, and the
+text-only Qwen2.5-Coder 7B/14B are stronger at code but need 5–9 GB of free RAM.
 
-The model loads when you ask something and unloads after 10 idle minutes. If memory is short Pixel says so instead
-of hanging; while it reads a long screen you'll see *reading… 42%*, and the send button turns into **Stop**.
+The brain loads in the background when Pixel starts and stays loaded (set `idleUnloadMinutes` in
+`%APPDATA%\Pixel\settings.json` to unload it after that many idle minutes instead). If memory is short Pixel says so
+instead of hanging; while it reads a long screen you'll see *reading… 42%*, and the send button turns into **Stop**.
 Each question takes a fresh look at the screen (Pixel's own windows are invisible to it). Switch the 👁 eye off
 in the chat to ask without the screen.
 

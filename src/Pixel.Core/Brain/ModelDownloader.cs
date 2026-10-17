@@ -15,14 +15,17 @@ public sealed record ModelPack(string Title, string Repo, string Revision, IRead
     public ModelFile Model => Files.Single(f => !ModelLocator.IsProjector(f.Name));
     public Uri UrlFor(ModelFile f) => new($"https://huggingface.co/{Repo}/resolve/{Revision}/{f.Name}");
 
-    /// <summary>Qwen3-VL-4B (Apache-2.0): small enough for most PCs, and it can see the screen.</summary>
+    /// <summary>
+    /// Qwen3-VL-2B (Apache-2.0): sees the screen, and on a laptop CPU answers about twice as fast as the 4B
+    /// (≈80 tokens/s reading, ≈27 tokens/s writing) in about half the memory.
+    /// </summary>
     public static readonly ModelPack VisionDefault = new(
-        "Qwen3-VL-4B",
-        "Qwen/Qwen3-VL-4B-Instruct-GGUF",
-        "1cd86afb9a95c410a6038ab3b40d8b578c892266",
+        "Qwen3-VL-2B",
+        "Qwen/Qwen3-VL-2B-Instruct-GGUF",
+        "52d6c8ffea26cc873ac5ad116f8631268d7eb503",
         [
-            new("mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf", 453_974_304, "30ba2c7dd3127a4561b6cba9d13d0f711c91bdb38742e2f56d73c8cb596bd06d"),
-            new("Qwen3VL-4B-Instruct-Q4_K_M.gguf", 2_497_281_664, "66358cb18bb6b3b1b6675aa412c7a88ef01d228f481184d13668e5201c730a0a"),
+            new("mmproj-Qwen3VL-2B-Instruct-Q8_0.gguf", 445_053_216, "f9a68fabba69c3b81e153367b2c7521030b0fa8bb0de400c9599c8e6725f9c82"),
+            new("Qwen3VL-2B-Instruct-Q4_K_M.gguf", 1_107_409_952, "089d75c52f4b7ffc56ba998ffc50aae89fcafc755f9e7208aacca281dca6c2ae"),
         ]);
 }
 

@@ -12,6 +12,9 @@ public sealed record ToolSpec(string Name, string Description, string Parameters
 /// <param name="endpoint">Live server address and API key; null when no server is running. Defaults to the client's BaseAddress.</param>
 public sealed class LlamaClient(HttpClient http, Func<(Uri BaseUri, string? ApiKey)?>? endpoint = null)
 {
+    /// <summary>Longest answer Pixel asks for (≈700 words): a small model stuck repeating itself always ends.</summary>
+    public const int MaxAnswerTokens = 1024;
+
     public async IAsyncEnumerable<BrainEvent> StreamAsync(
         IReadOnlyList<ChatMessage> messages,
         IReadOnlyList<ToolSpec>? tools,
@@ -100,8 +103,16 @@ public sealed class LlamaClient(HttpClient http, Func<(Uri BaseUri, string? ApiK
         {
             w.WriteStartObject();
             w.WriteBoolean("stream", maxTokens is null);
-            if (maxTokens is { } max) w.WriteNumber("max_tokens", max);
-            w.WriteNumber("temperature", 0.4);
+            w.WriteNumber("max_tokens", maxTokens ?? MaxAnswerTokens);
+            // Qwen's recommended sampling for its VL instruct models.
+            w.WriteNumber("temperature", 0.6);
+            w.WriteNumber("top_k", 20);
+            w.WriteNumber("top_p", 0.8);
+            // DRY ("don't repeat yourself") penalises re-writing a run of tokens that already appeared, growing with its
+            // length: it breaks the loops small models fall into, while short repeats (code, names) stay free.
+            w.WriteNumber("dry_multiplier", 0.8);
+            w.WriteNumber("dry_base", 1.75);
+            w.WriteNumber("dry_allowed_length", 3);
             w.WriteBoolean("cache_prompt", true);
             w.WriteBoolean("return_progress", true);
             w.WriteStartArray("messages");

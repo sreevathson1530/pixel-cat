@@ -147,7 +147,11 @@ internal sealed class SettingsWindow : Window
         if (next.StartWithWindows != AutoStart.IsEnabled()) AutoStart.Set(next.StartWithWindows);
         var brainChanged = next.ModelPath != old.ModelPath || next.LlamaBackend != old.LlamaBackend || next.LlamaThreads != old.LlamaThreads;
         _host.UpdateSettings(next);
-        if (brainChanged) _host.Brain.Unload(); // next question loads the new choice
+        if (brainChanged)
+        {
+            _host.Brain.Unload();
+            _host.WakeBrainSoon(1); // load the new choice in the background
+        }
         Close();
     }
 

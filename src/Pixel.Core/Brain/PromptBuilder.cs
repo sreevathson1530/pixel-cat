@@ -22,7 +22,7 @@ public static class PromptBuilder
     public const int ScreenshotChars = ServerOptions.ImageMaxTokens * 3;
 
     private const string Truncated = "\n…[truncated]";
-    private const string NoScreen = "[Screen: not shared for this question]\n";
+    private const string NoScreen = "[Screen: not shared (👁 off)]\n";
     private const string SameScreen = "[Screen: unchanged since the screen shown above]\n";
     private const string OldScreen = "[Screen: an earlier screen, no longer shown]\n";
 
@@ -148,7 +148,7 @@ public static class PromptBuilder
         """
         Words like "this", "that", "here", "that person", "the page" or "my screen" mean what is on the user's screen, not you.
         [Screen: unchanged since the screen shown above] means the screen shown with an earlier question is still what the user sees.
-        [Screen: not shared] means the user switched the 👁 eye off for that question: answer without the screen, and mention they can switch it on.
+        [Screen: not shared (👁 off)] means you cannot see the screen for that question: never describe or guess it. Only if they ask about the screen, say in one short sentence that the 👁 eye is off and they can switch it on; otherwise answer normally without mentioning the screen.
         Use the tools only when the user asks for an action (reminders, timers, notes, copying, opening things, web search).
         Each question carries the date and time it was asked as [Now: …].
         """;

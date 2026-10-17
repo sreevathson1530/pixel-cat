@@ -71,8 +71,11 @@ internal sealed class ScreenReader
         return lines;
     }
 
-    /// <summary>Longest side of the screenshot shown to a vision brain: 1024×576 for a 16:9 screen ≈ 580 image tokens.</summary>
-    public const int VisionMaxSide = 1024;
+    /// <summary>
+    /// Longest side of the screenshot shown to a vision brain: 640×360 for a 16:9 screen ≈ 300 image tokens — about
+    /// half the reading time of 1024 px. Exact text comes from OCR, so the picture only needs to show what things look like.
+    /// </summary>
+    public const int VisionMaxSide = 640;
 
     private static readonly ImageCodecInfo Jpeg = ImageCodecInfo.GetImageEncoders().First(c => c.FormatID == ImageFormat.Jpeg.Guid);
 

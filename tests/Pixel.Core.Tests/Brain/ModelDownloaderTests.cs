@@ -149,10 +149,11 @@ public sealed class ModelDownloaderTests : IDisposable
         var pack = ModelPack.VisionDefault;
         Assert.Equal(2, pack.Files.Count);
         Assert.True(ModelLocator.IsProjector(pack.Files[0].Name));
-        Assert.Equal("Qwen3VL-4B-Instruct-Q4_K_M.gguf", pack.Model.Name);
+        Assert.Equal("Qwen3VL-2B-Instruct-Q4_K_M.gguf", pack.Model.Name);
         Assert.Matches("^[0-9a-f]{40}$", pack.Revision);
         Assert.All(pack.Files, f => Assert.Matches("^[0-9a-f]{64}$", f.Sha256));
-        Assert.StartsWith("https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct-GGUF/resolve/", pack.UrlFor(pack.Model).AbsoluteUri);
+        Assert.StartsWith("https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct-GGUF/resolve/", pack.UrlFor(pack.Model).AbsoluteUri);
+        Assert.InRange(pack.TotalBytes, 1_000_000_000, 2_000_000_000); // small enough to download and keep loaded
     }
 
     [Fact]

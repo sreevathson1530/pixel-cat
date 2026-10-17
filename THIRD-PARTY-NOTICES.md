@@ -51,5 +51,5 @@ Hosts the chat panel. Copyright (C) Microsoft Corporation. https://www.nuget.org
 
 ## Downloaded on first use (not shipped)
 
-### Qwen3-VL-4B-Instruct (GGUF) — Apache-2.0
-The default brain, from https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct-GGUF. Copyright Alibaba Cloud (Qwen team).
+### Qwen3-VL-2B-Instruct (GGUF) — Apache-2.0
+The default brain, from https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct-GGUF. Copyright Alibaba Cloud (Qwen team).

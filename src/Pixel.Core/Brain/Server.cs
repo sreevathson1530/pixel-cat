@@ -119,11 +119,14 @@ public sealed record ServerOptions(
     string? ApiKey = null,
     string? ProjectorPath = null)
 {
-    /// <summary>Most context a screenshot may take. Pixel already sends it downscaled to about this size.</summary>
-    public const int ImageMaxTokens = 1024;
+    /// <summary>Most context a screenshot may take. Pixel already sends it downscaled to well under this.</summary>
+    public const int ImageMaxTokens = 512;
+
+    /// <summary>RAM llama-server may use to keep recent prompts (with and without tools) ready to reuse, MiB.</summary>
+    public const int PromptCacheMiB = 512;
 
     public string Arguments =>
-        ($"-m \"{ModelPath}\" --host 127.0.0.1 --port {Port} -c {ContextSize} -np 1 -t {Threads} -ngl {GpuLayers} --jinja --no-webui "
+        ($"-m \"{ModelPath}\" --host 127.0.0.1 --port {Port} -c {ContextSize} -np 1 -t {Threads} -ngl {GpuLayers} --jinja --no-webui --cache-ram {PromptCacheMiB} "
          + (ProjectorPath is null ? "" : $"--mmproj \"{ProjectorPath}\" --image-max-tokens {ImageMaxTokens} ")
          + ExtraArgs).Trim();
 }

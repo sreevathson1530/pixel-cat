@@ -9,22 +9,22 @@ public static class ToolDefinitions
 {
     public static IReadOnlyList<ToolSpec> All { get; } =
     [
-        new("set_reminder", "Remind the user later with a meow and a message. Give either minutes from now or a 24h clock time.",
+        new("set_reminder", "Only when the user asks to be reminded: remind them later with a meow and a message. Give either minutes from now or a 24h clock time.",
             """{"type":"object","properties":{"minutes":{"type":"number","description":"minutes from now"},"at":{"type":"string","description":"24h time HH:mm"},"message":{"type":"string"}},"required":["message"]}"""),
-        new("start_pomodoro", "Start a Pomodoro focus timer.",
+        new("start_pomodoro", "Only when the user asks for a Pomodoro or focus timer: start one.",
             """{"type":"object","properties":{"work_minutes":{"type":"number"},"break_minutes":{"type":"number"}}}"""),
-        new("stop_pomodoro", "Stop the running Pomodoro timer.", """{"type":"object","properties":{}}"""),
-        new("add_note", "Save a short note for the user; pinned notes stay visible on the desktop.",
+        new("stop_pomodoro", "Only when the user asks to stop the Pomodoro: stop the running timer.", """{"type":"object","properties":{}}"""),
+        new("add_note", "Only when the user asks to save or remember a note: save it; pinned notes stay visible on the desktop.",
             """{"type":"object","properties":{"text":{"type":"string"},"pinned":{"type":"boolean"}},"required":["text"]}"""),
-        new("copy_to_clipboard", "Copy text (for example code) to the clipboard.",
+        new("copy_to_clipboard", "Only when the user asks to copy something: copy that text (for example code) to the clipboard.",
             """{"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}"""),
-        new("open_url", "Open a web page in the default browser.",
+        new("open_url", "Only when the user asks to open a web page: open it in the default browser.",
             """{"type":"object","properties":{"url":{"type":"string"}},"required":["url"]}"""),
-        new("open_app", "Open an installed app by name, e.g. notepad, calc, chrome, code.",
+        new("open_app", "Only when the user asks to open an app: open it by name, e.g. notepad, calc, chrome, code.",
             """{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}"""),
-        new("open_file", "Open a file or folder on this PC by full path.",
+        new("open_file", "Only when the user asks to open a file or folder: open it by full path.",
             """{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}"""),
-        new("web_search", "Search the web in the default browser.",
+        new("web_search", "Only when the user explicitly asks to search the web or look something up online: open that search in their browser. Never use it to answer a question - answer questions yourself.",
             """{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}"""),
     ];
 }
@@ -86,7 +86,8 @@ public abstract record ToolRequest
 public static class ToolArgs
 {
 
-    public static ToolRequest Parse(ToolInvocation call, Func<string, bool> pathExists)
+    /// <param name="asked">The user's question, used to fill in what a small model left out (e.g. a reminder's time).</param>
+    public static ToolRequest Parse(ToolInvocation call, Func<string, bool> pathExists, string? asked = null)
     {
         JsonElement a;
         try
@@ -104,11 +105,17 @@ public static class ToolArgs
         {
             case "set_reminder":
             {
-                var message = Str(a, "message") is { Length: > 0 } m ? CleanReminder(m) : "Reminder";
+                var message = Str(a, "message") is { Length: > 0 } m ? CleanReminder(m) : "";
+                if (asked is not null && (message.Length == 0 || ReminderText.IsEcho(message)) && ReminderText.Subject(asked) is { } what)
+                    message = CleanReminder(what);
+                if (message.Length == 0) message = "Reminder";
                 if (Num(a, "minutes") is { } min && min > 0 && min <= 24 * 60)
                     return new ToolRequest.SetReminder(TimeSpan.FromMinutes(min), null, message);
                 if (Str(a, "at") is { } at && TimeOnly.TryParseExact(at, ["HH:mm", "H:mm"], CultureInfo.InvariantCulture, DateTimeStyles.None, out var t))
                     return new ToolRequest.SetReminder(null, t, message);
+                // The model forgot the time: take it from the user's own words.
+                if (asked is not null && ReminderText.In(asked) is { } inn) return new ToolRequest.SetReminder(inn, null, message);
+                if (asked is not null && ReminderText.At(asked) is { } clock) return new ToolRequest.SetReminder(null, clock, message);
                 return new ToolRequest.Invalid("A reminder needs minutes from now or a time like 17:30.");
             }
             case "start_pomodoro":
