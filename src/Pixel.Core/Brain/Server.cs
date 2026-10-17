@@ -53,20 +53,24 @@ public static partial class ModelLocator
         return generic is not null && MultimodalName().IsMatch(model) ? generic : null;
     }
 
-    public static ModelStatus Find(string directory, string? explicitPath)
+    /// <param name="alsoLookIn">Older folders to fall back on; a missing brain is still reported for <paramref name="directory"/>.</param>
+    public static ModelStatus Find(string directory, string? explicitPath, IEnumerable<string>? alsoLookIn = null)
     {
         if (!string.IsNullOrWhiteSpace(explicitPath) && File.Exists(explicitPath)) return new ModelStatus.Found(explicitPath);
+        if (FirstModelIn(directory) is { } model) return new ModelStatus.Found(model);
+        foreach (var older in alsoLookIn ?? [])
+            if (FirstModelIn(older) is { } found) return new ModelStatus.Found(found);
         if (!Directory.Exists(directory)) return new ModelStatus.Missing(directory);
-
-        var model = Directory.EnumerateFiles(directory, "*.gguf")
-            .Where(f => !IsProjector(f) && (!AnySplit().IsMatch(f) || FirstSplit().IsMatch(f)))
-            .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
-            .FirstOrDefault();
-        if (model is not null) return new ModelStatus.Found(model);
 
         var partial = PartialPatterns.SelectMany(p => Directory.EnumerateFiles(directory, p)).FirstOrDefault();
         return partial is not null ? new ModelStatus.Downloading(Path.GetFileName(partial)) : new ModelStatus.Missing(directory);
     }
+
+    private static string? FirstModelIn(string directory) => !Directory.Exists(directory) ? null
+        : Directory.EnumerateFiles(directory, "*.gguf")
+            .Where(f => !IsProjector(f) && (!AnySplit().IsMatch(f) || FirstSplit().IsMatch(f)))
+            .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
 }
 
 public abstract record MemoryVerdict

@@ -495,7 +495,8 @@ internal sealed class ChatController
         var progress = new Progress<DownloadProgress>(p =>
         {
             watchdog.Pet();
-            _window?.Post(new { type = "status", text = $"downloading my brain… {p.Fraction:P0} ({Gb(p.Done)} of {Gb(p.Total)})", busy = true });
+            var what = p.Reconnecting ? "connection dropped — reconnecting…" : "downloading my brain…";
+            _window?.Post(new { type = "status", text = $"{what} {p.Fraction:P0} ({Gb(p.Done)} of {Gb(p.Total)})", busy = true });
         });
         try
         {

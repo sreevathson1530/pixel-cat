@@ -29,7 +29,8 @@ public sealed record ModelPack(string Title, string Repo, string Revision, IRead
         ]);
 }
 
-public readonly record struct DownloadProgress(long Done, long Total)
+/// <param name="Reconnecting">The connection dropped and the download is about to resume from where it stopped.</param>
+public readonly record struct DownloadProgress(long Done, long Total, bool Reconnecting = false)
 {
     public double Fraction => Total > 0 ? Math.Clamp((double)Done / Total, 0, 1) : 0;
 }
@@ -40,14 +41,23 @@ public sealed class ModelDownloadException(string message, Exception? inner = nu
 /// <summary>
 /// Downloads a <see cref="ModelPack"/> into a folder. Each file goes to "name.gguf.pixel-partial" first, resumes
 /// from there after an interruption, and only becomes "name.gguf" once its size and SHA-256 match — so a damaged or
-/// tampered file is never loaded.
+/// tampered file is never loaded. A dropped or stalled connection reconnects and resumes by itself.
 /// </summary>
-public sealed class ModelDownloader(HttpClient http, TimeSpan? stallTimeout = null, int bufferSize = 1 << 20)
+/// <param name="retryDelay">Wait before reconnect attempt n (1-based); defaults to 2, 4, 8, 16, 30 s.</param>
+public sealed class ModelDownloader(HttpClient http, TimeSpan? stallTimeout = null, int bufferSize = 1 << 20,
+    Func<int, TimeSpan>? retryDelay = null)
 {
     /// <summary>Suffix of a file still downloading. Not a pattern <see cref="ModelLocator"/> treats as a browser download.</summary>
     public const string PartialSuffix = ".pixel-partial";
 
+    /// <summary>Tries in a row without progress before giving up; any progress starts the count again.</summary>
+    public const int MaxAttempts = 6;
+
     private readonly TimeSpan _stall = stallTimeout ?? TimeSpan.FromSeconds(60);
+    private readonly Func<int, TimeSpan> _retryDelay = retryDelay ?? (n => TimeSpan.FromSeconds(Math.Min(30, 2 << (n - 1))));
+
+    /// <summary>The connection failed in a way that's worth simply trying again (resuming from the partial file).</summary>
+    private sealed class ConnectionDropped(string reason, Exception? inner = null) : Exception(reason, inner);
 
     /// <summary>Bytes of the pack already on disk, finished or partial — to offer a resume.</summary>
     public static long BytesPresent(ModelPack pack, string dir) => pack.Files.Sum(f =>
@@ -68,17 +78,47 @@ public sealed class ModelDownloader(HttpClient http, TimeSpan? stallTimeout = nu
         {
             var target = Path.Combine(dir, f.Name);
             if (!(File.Exists(target) && new FileInfo(target).Length == f.Size))
-                await FetchAsync(pack.UrlFor(f), target, f, before, reporter, ct);
+                await FetchWithRetriesAsync(pack.UrlFor(f), target, f, before, reporter, ct);
             before += f.Size;
             reporter.Report(before, force: true);
         }
         return Path.Combine(dir, pack.Model.Name);
     }
 
+    private static long PartialLength(string part) => File.Exists(part) ? new FileInfo(part).Length : 0;
+
+    /// <summary>
+    /// Fetches one file, reconnecting after drops. Gives up only after <see cref="MaxAttempts"/> tries in a row that
+    /// made no progress, so a long download on a shaky network keeps going.
+    /// </summary>
+    private async Task FetchWithRetriesAsync(Uri url, string target, ModelFile f, long before, Reporter reporter, CancellationToken ct)
+    {
+        var part = target + PartialSuffix;
+        var failures = 0;
+        while (true)
+        {
+            var had = PartialLength(part);
+            try
+            {
+                await FetchAsync(url, target, f, before, reporter, ct);
+                return;
+            }
+            catch (ConnectionDropped e)
+            {
+                failures = PartialLength(part) > had ? 1 : failures + 1;
+                if (failures >= MaxAttempts)
+                    throw new ModelDownloadException(
+                        $"The connection to huggingface.co kept dropping ({e.Message}). Ask me again and I'll pick up where I left off — or try another network.", e.InnerException);
+                reporter.Reconnecting(before + PartialLength(part));
+                await Task.Delay(_retryDelay(failures), ct);
+            }
+        }
+    }
+
     private async Task FetchAsync(Uri url, string target, ModelFile f, long before, Reporter reporter, CancellationToken ct)
     {
         var part = target + PartialSuffix;
-        var have = File.Exists(part) ? new FileInfo(part).Length : 0;
+        var have = PartialLength(part);
         if (have > f.Size) have = 0;
 
         if (have < f.Size)
@@ -87,43 +127,76 @@ public sealed class ModelDownloader(HttpClient http, TimeSpan? stallTimeout = nu
             if (have > 0) request.Headers.Range = new RangeHeaderValue(have, null);
             using var stall = CancellationTokenSource.CreateLinkedTokenSource(ct);
             stall.CancelAfter(_stall);
+
+            HttpResponseMessage response;
             try
             {
-                using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, stall.Token);
-                if (!response.IsSuccessStatusCode)
-                    throw new ModelDownloadException($"huggingface.co answered {(int)response.StatusCode} for {f.Name}. Try again later.");
-                if (have > 0 && response.StatusCode != HttpStatusCode.PartialContent) have = 0; // no resume offered: start over
-
-                await using var source = await response.Content.ReadAsStreamAsync(stall.Token);
-                await using var file = new FileStream(part, have > 0 ? FileMode.Append : FileMode.Create, FileAccess.Write, FileShare.None, bufferSize);
-                var buffer = new byte[bufferSize];
-                while (true)
-                {
-                    stall.CancelAfter(_stall); // a live connection keeps pushing the deadline out
-                    var n = await source.ReadAsync(buffer, stall.Token);
-                    if (n == 0) break;
-                    if (have + n > f.Size) throw new ModelDownloadException($"{f.Name} came out bigger than expected, so I stopped. Try again later.");
-                    await file.WriteAsync(buffer.AsMemory(0, n), stall.Token);
-                    have += n;
-                    reporter.Report(before + have);
-                }
-            }
-            catch (OperationCanceledException e) when (!ct.IsCancellationRequested)
-            {
-                throw new ModelDownloadException("The download stalled — the connection went quiet. Ask me again and I'll pick up where I left off.", e);
+                response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, stall.Token);
             }
             catch (HttpRequestException e)
             {
-                throw new ModelDownloadException("I couldn't reach huggingface.co. Check your internet and ask me again — I'll pick up where I left off.", e);
+                throw new ConnectionDropped("couldn't reach it", e);
             }
-            catch (IOException e) when (e is not FileNotFoundException)
+            catch (OperationCanceledException e) when (!ct.IsCancellationRequested)
             {
-                throw new ModelDownloadException($"Saving {f.Name} failed ({e.Message}). Check there's free space, then ask me again.", e);
+                throw new ConnectionDropped("no answer", e);
+            }
+
+            using (response)
+            {
+                var status = (int)response.StatusCode;
+                if (status is 408 or 429 || status >= 500) throw new ConnectionDropped($"the server answered {status}");
+                if (!response.IsSuccessStatusCode)
+                    throw new ModelDownloadException($"huggingface.co answered {status} for {f.Name}. Try again later.");
+                if (have > 0 && response.StatusCode != HttpStatusCode.PartialContent) have = 0; // no resume offered: start over
+
+                FileStream file;
+                try
+                {
+                    file = new FileStream(part, have > 0 ? FileMode.Append : FileMode.Create, FileAccess.Write, FileShare.None, bufferSize);
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    throw new ModelDownloadException($"I couldn't save {f.Name} in {Path.GetDirectoryName(part)} ({e.Message}).", e);
+                }
+
+                await using (file)
+                {
+                    var buffer = new byte[bufferSize];
+                    try
+                    {
+                        await using var source = await response.Content.ReadAsStreamAsync(stall.Token);
+                        while (true)
+                        {
+                            stall.CancelAfter(_stall); // a live connection keeps pushing the deadline out
+                            var n = await source.ReadAsync(buffer, stall.Token);
+                            if (n == 0) break;
+                            if (have + n > f.Size) throw new ModelDownloadException($"{f.Name} came out bigger than expected, so I stopped. Try again later.");
+                            try
+                            {
+                                await file.WriteAsync(buffer.AsMemory(0, n), ct);
+                            }
+                            catch (IOException e)
+                            {
+                                throw new ModelDownloadException($"Saving {f.Name} failed ({e.Message}). Check there's free disk space, then ask me again.", e);
+                            }
+                            have += n;
+                            reporter.Report(before + have);
+                        }
+                    }
+                    catch (OperationCanceledException e) when (!ct.IsCancellationRequested)
+                    {
+                        throw new ConnectionDropped("the connection went quiet", e);
+                    }
+                    catch (Exception e) when (e is IOException or HttpRequestException)
+                    {
+                        throw new ConnectionDropped("the connection was cut", e); // reading from the network; disk errors are handled above
+                    }
+                }
             }
         }
 
-        if (have != f.Size)
-            throw new ModelDownloadException("The download ended early. Ask me again and I'll pick up where I left off.");
+        if (have != f.Size) throw new ConnectionDropped("the download ended early");
         if (!await HashMatchesAsync(part, f.Sha256, ct))
         {
             File.Delete(part);
@@ -143,6 +216,8 @@ public sealed class ModelDownloader(HttpClient http, TimeSpan? stallTimeout = nu
     private sealed class Reporter(IProgress<DownloadProgress>? progress, long total)
     {
         private long _last = -1;
+
+        public void Reconnecting(long done) => progress?.Report(new DownloadProgress(done, total, Reconnecting: true));
 
         public void Report(long done, bool force = false)
         {

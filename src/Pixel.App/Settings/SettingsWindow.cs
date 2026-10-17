@@ -102,17 +102,12 @@ internal sealed class SettingsWindow : Window
     }
 
     private static string CurrentModel(Pixel.Core.Storage.Settings s) =>
-        Pixel.Core.Brain.ModelLocator.Find(s.ModelDirectory, s.ModelPath) is Pixel.Core.Brain.ModelStatus.Found f ? f.Path : s.ModelPath ?? "";
+        Pixel.Core.Brain.ModelLocator.Find(s.ModelDirectory, s.ModelPath, Pixel.Core.Storage.Settings.OlderModelFolders) is Pixel.Core.Brain.ModelStatus.Found f ? f.Path : s.ModelPath ?? "";
 
     /// <summary>Every model in the usual folders, labelled with its size and whether it can see pictures.</summary>
     private static IEnumerable<ModelChoice> ModelChoices(Pixel.Core.Storage.Settings s)
     {
-        var dirs = new[]
-        {
-            s.ModelDirectory,
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "pixel-models"),
-            Path.GetDirectoryName(s.ModelPath ?? "") ?? "",
-        };
+        string[] dirs = [s.ModelDirectory, .. Pixel.Core.Storage.Settings.OlderModelFolders, Path.GetDirectoryName(s.ModelPath ?? "") ?? ""];
         return dirs.Where(Directory.Exists).Distinct(StringComparer.OrdinalIgnoreCase)
             .SelectMany(d => Directory.EnumerateFiles(d, "*.gguf"))
             .Where(p => !Pixel.Core.Brain.ModelLocator.IsProjector(p))

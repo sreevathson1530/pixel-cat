@@ -31,7 +31,8 @@ Go to the [**latest release**](https://github.com/sreevathson1530/pixel-cat/rele
 ### Step 2 — Unzip it to a permanent folder
 
 1. Open your *Downloads* folder, **right-click** the zip and choose **Extract All…**.
-2. Pick a folder you'll keep, for example `C:\Users\<you>\Documents\Pixel`, and click **Extract**.
+2. Pick a folder you'll keep, for example `C:\Users\<you>\Pixel`, and click **Extract**. Avoid folders OneDrive
+   syncs (often *Documents* and *Desktop*) — it would upload the whole app to the cloud.
 
 Don't run Pixel from inside the zip, and don't extract it to *Downloads* if you clean that folder — Pixel starts with
 Windows from wherever you put it.
@@ -56,11 +57,12 @@ Press the same keys again to close it.
 
 1. Type anything in the chat, for example **`hello`**, and press **Enter**.
 2. Pixel answers with a card: **"I don't have a brain yet. Download one?"** Click **Do it**.
-3. It downloads **Qwen3-VL-2B** (1.4 GB) from Hugging Face into your `Documents\pixel` folder — you'll see
+3. It downloads **Qwen3-VL-2B** (1.4 GB) from Hugging Face into `%LOCALAPPDATA%\Pixel\models` — you'll see
    *downloading my brain… 42%* at the top of the panel. On a typical connection this takes 2–5 minutes.
 4. When it finishes, Pixel loads the brain and answers your message.
 
-If the download is interrupted (Wi-Fi drops, laptop sleeps), just ask again — it picks up where it left off.
+If the connection drops, Pixel reconnects and carries on by itself. If it stops completely (Wi-Fi off, laptop
+asleep), just ask again — it picks up where it left off.
 Every file is checked against a known fingerprint before it's used, so a damaged download is never loaded.
 
 ### Step 6 — Ask about your screen
@@ -120,7 +122,7 @@ ask something without sharing your screen.
 | I can't see the cat | It may be hidden: press `Ctrl + Right Shift + Delete`, or tray icon → **Show Pixel**. No tray icon? Start `Pixel.exe` again. |
 | The chat panel is blank or doesn't open | Install the [WebView2 runtime](https://developer.microsoft.com/microsoft-edge/webview2/), then quit and restart Pixel. |
 | `Ctrl + Win + Space` does nothing | Another app may use that shortcut — open the chat from the tray icon instead. |
-| The brain download fails | Check your internet and free disk space, then ask again; it resumes. Hugging Face must be reachable (some office or school networks block it). |
+| The brain download fails | It reconnects by itself when the connection drops; if it still stops, ask again and it resumes. Some office, school or college networks block or cut big downloads from Hugging Face — try another Wi-Fi or a phone hotspot. |
 | "Only X GB of RAM is free…" or very slow answers | Close some apps or browser tabs and ask again. |
 | It answers but doesn't know what's on screen | Switch the **👁 eye** on (next to the chat box). |
 | It answers something odd | The default brain is small to be fast. For harder questions pick a bigger brain in Settings (see below). |
@@ -131,7 +133,8 @@ ask something without sharing your screen.
 1. Right-click the tray icon → **Quit Pixel**.
 2. Download the new zip from the [latest release](https://github.com/sreevathson1530/pixel-cat/releases/latest) and
    extract it **over your existing Pixel folder** (choose *Replace the files* if asked).
-3. Start `Pixel.exe` again. Your brain (`Documents\pixel`), settings, notes and chat history (`%APPDATA%\Pixel`) are kept.
+3. Start `Pixel.exe` again. Your brain (`%LOCALAPPDATA%\Pixel\models`), settings, notes and chat history
+   (`%APPDATA%\Pixel`) are kept.
 
 Coming from **1.0.0**, Pixel keeps the slower 4B brain you already have. To switch to the faster 2B brain: quit Pixel,
 delete `%APPDATA%\Pixel\settings.json` (this resets your settings) and the two files with `Qwen3VL-4B` in their
@@ -141,7 +144,8 @@ names in `Documents\pixel`, then start Pixel, ask anything and click **Do it**.
 
 1. Tray icon → **Settings…** → untick **Start with Windows** → Save.
 2. Tray icon → **Quit Pixel**.
-3. Delete the Pixel folder, `%APPDATA%\Pixel` (settings, notes, history) and `Documents\pixel` (the brain).
+3. Delete the Pixel folder, `%APPDATA%\Pixel` (settings, notes, history) and `%LOCALAPPDATA%\Pixel` (the brain and
+   the chat panel's cache) — plus `Documents\pixel` if an older version put a brain there.
 
 ---
 
@@ -152,7 +156,8 @@ The default, downloaded on first use, is **Qwen3-VL-2B**: it gets a small screen
 screen's exact text, read by Windows OCR), so it can describe pictures, photos and layouts as well as read code and
 errors — and it's quick: about 80 tokens/s reading and 27 tokens/s writing on a laptop CPU.
 
-Settings → **Brain** lists every `.gguf` model in `Documents\pixel` and `%USERPROFILE%\pixel-models`, labelled
+Settings → **Brain** lists every `.gguf` model in `%LOCALAPPDATA%\Pixel\models`, `Documents\pixel` and
+`%USERPROFILE%\pixel-models`, labelled
 *sees pictures* or *reads text*. A model sees pictures when its vision projector (`mmproj-….gguf`) sits next to it.
 Bigger models are smarter but slower: Qwen3-VL-4B (also sees pictures) takes about twice as long, and the
 text-only Qwen2.5-Coder 7B/14B are stronger at code but need 5–9 GB of free RAM.

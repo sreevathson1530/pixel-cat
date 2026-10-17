@@ -27,7 +27,7 @@ internal sealed class BrainService : IDisposable
             () => DateTimeOffset.Now, idle > 0 ? TimeSpan.FromMinutes(idle) : TimeSpan.MaxValue); // 0: never unload
         Brain = new LlamaBrain(
             Server,
-            () => ModelLocator.Find(_settings().ModelDirectory, _settings().ModelPath),
+            () => ModelLocator.Find(_settings().ModelDirectory, _settings().ModelPath, Settings.OlderModelFolders),
             OptionsFor,
             CheckMemory,
             askUser,

@@ -14,8 +14,19 @@ public sealed record Settings
     public bool StartWithWindows { get; init; } = true;
     public double Volume { get; init; } = 0.6;
     public bool Muted { get; init; }
+    /// <summary>
+    /// Where the brain is downloaded. Local app data, not Documents: Documents is often synced by OneDrive, which would
+    /// upload the 1.4 GB brain to the cloud and can lock the file while Pixel writes or loads it.
+    /// </summary>
     public string ModelDirectory { get; init; } =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "pixel");
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Pixel", "models");
+
+    /// <summary>Folders earlier versions (and the setup guide) used; a brain found there still works.</summary>
+    public static IReadOnlyList<string> OlderModelFolders { get; } =
+    [
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "pixel"),
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "pixel-models"),
+    ];
     public string? ModelPath { get; init; }
     public string LlamaBackend { get; init; } = "cpu";
 
