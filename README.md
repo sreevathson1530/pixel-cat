@@ -4,41 +4,103 @@ An original black pixel-art cat that lives on your Windows desktop, reacts to wh
 about anything on your screen using a **local** AI model that can see it. Nothing leaves your PC except the
 one-time brain download and web searches you approve.
 
-## Get started
+- Ask about whatever is on screen — an error, a web page, a photo, your code — and get an answer in a second or two
+- Reminders, a Pomodoro timer, notes, opening apps and links (always with a **Do it?** card first)
+- It wanders around, types on a tiny laptop when you type, chases a fast mouse, meows when you pet it, and bounces
+  off the sides of the screen when you throw it
 
-1. **Download** `Pixel-…-win-x64.zip` from the [latest release](https://github.com/sreevathson1530/pixel-cat/releases/latest).
-2. **Unzip** it somewhere permanent (for example `Documents\Pixel`) and double-click **`Pixel.exe`**.
-   Windows may say *"Windows protected your PC"* because the app isn't code-signed — click **More info → Run anyway**.
-3. The cat appears and starts wandering. Press **`Ctrl + Win + Space`** and ask it anything.
-4. The first time, Pixel offers to **download its brain** (Qwen3-VL-2B, 1.4 GB from Hugging Face, saved in
-   `Documents\pixel`). Say yes, wait a couple of minutes, and it answers. If the download is interrupted, ask again and it
-   picks up where it left off.
+---
 
-**You need:** Windows 10 (version 2004 or later) or Windows 11, 64-bit · about 2 GB of free RAM ·
-about 2 GB of disk space · the WebView2 runtime (built into Windows 11; on Windows 10 it comes with Microsoft Edge,
-or get it [from Microsoft](https://developer.microsoft.com/microsoft-edge/webview2/)).
+## Install it on your laptop — step by step
 
-Pixel keeps its brain loaded and reads your screen while you type, so answers usually start within a second of
-pressing Enter (on a 2025 laptop: ~10 s to read the screen in the background while you type, then ~0.5 s to the
-first word and ~2 s for a short answer).
-Pixel starts with Windows — turn that off from the tray icon. To remove it: tray → Quit, then delete the Pixel
-folder, `%APPDATA%\Pixel` and `Documents\pixel`.
+### Before you start
 
-## Use it
+| You need | Notes |
+|---|---|
+| Windows 10 (version 2004 or newer) or Windows 11, **64-bit** | Check in *Settings → System → About*. Mac and Linux aren't supported. |
+| About **2 GB of free RAM** while Pixel thinks | Close a few browser tabs if your PC is short on memory. |
+| About **2 GB of free disk space** | 0.35 GB for the app + 1.4 GB for its brain. |
+| An internet connection — **once** | To download the app and its brain. After that Pixel works offline. |
+| The **WebView2 runtime** (for the chat panel) | Already built into Windows 11 and installed with Microsoft Edge on Windows 10. If the chat panel stays blank, get it [from Microsoft](https://developer.microsoft.com/microsoft-edge/webview2/). |
+
+### Step 1 — Download Pixel
+
+Go to the [**latest release**](https://github.com/sreevathson1530/pixel-cat/releases/latest) and click
+**`Pixel-<version>-win-x64.zip`** under *Assets* to download it (about 130 MB).
+
+### Step 2 — Unzip it to a permanent folder
+
+1. Open your *Downloads* folder, **right-click** the zip and choose **Extract All…**.
+2. Pick a folder you'll keep, for example `C:\Users\<you>\Documents\Pixel`, and click **Extract**.
+
+Don't run Pixel from inside the zip, and don't extract it to *Downloads* if you clean that folder — Pixel starts with
+Windows from wherever you put it.
+
+### Step 3 — Start Pixel
+
+1. Open the folder you extracted and double-click **`Pixel.exe`**.
+2. Windows may show **"Windows protected your PC"** — Pixel isn't signed with a paid certificate. Click
+   **More info → Run anyway**. (Some antivirus apps ask about `llama-server.exe` too: that's the open-source
+   [llama.cpp](https://github.com/ggml-org/llama.cpp) engine Pixel thinks with. Allow it.)
+3. A small black cat appears on your screen and starts wandering around, and a cat-face icon appears in the
+   system tray (bottom-right, next to the clock — click **^** if it's hidden).
+
+From now on Pixel starts by itself when you sign in to Windows.
+
+### Step 4 — Open the chat
+
+Press **`Ctrl + Win + Space`** (or click the tray icon → **Chat**). A chat panel opens beside the cat.
+Press the same keys again to close it.
+
+### Step 5 — Give Pixel its brain (first time only)
+
+1. Type anything in the chat, for example **`hello`**, and press **Enter**.
+2. Pixel answers with a card: **"I don't have a brain yet. Download one?"** Click **Do it**.
+3. It downloads **Qwen3-VL-2B** (1.4 GB) from Hugging Face into your `Documents\pixel` folder — you'll see
+   *downloading my brain… 42%* at the top of the panel. On a typical connection this takes 2–5 minutes.
+4. When it finishes, Pixel loads the brain and answers your message.
+
+If the download is interrupted (Wi-Fi drops, laptop sleeps), just ask again — it picks up where it left off.
+Every file is checked against a known fingerprint before it's used, so a damaged download is never loaded.
+
+### Step 6 — Ask about your screen
+
+1. Open the page, error, photo or code you want help with.
+2. Press **`Ctrl + Win + Space`** and type your question — for example *"what does this error mean?"*,
+   *"summarise this page"* or *"what's in this picture?"*.
+3. Make sure the **👁 eye** next to the box is switched on (it is by default) — that's what lets Pixel see the screen.
+
+Pixel starts reading your screen the moment the chat opens, while you type, so the answer usually starts within
+a second of pressing Enter. Give it about half a minute after Windows starts before your first question while the
+brain loads in the background.
+
+### Step 7 — Make it yours (optional)
+
+Right-click the tray icon → **Settings…** to change the fur colour, size, whether it walks anywhere or only along the
+bottom of the screen, sound volume, the water/stretch reminders, which brain it uses, and **Start with Windows**.
+
+If you use **Claude Code**, tray → **Connect Claude Code…** lets the cat react while Claude works (laptop out),
+finishes (celebration) or needs you (waves). Pixel shows you exactly what it will add to Claude Code's settings and
+keeps a backup before changing anything.
+
+---
+
+## Everyday use
 
 | Do this | What happens |
 |---|---|
 | `Ctrl + Win + Space` | Open / close the chat panel beside the cat. Pixel reads your screen as it opens. |
-| `Ctrl + Right Shift + Delete` | Pixel vanishes in a poof (chat saved, screen watching off, brain unloaded). Press again: it pops back, waves hi, and starts a fresh chat. |
+| `Ctrl + Right Shift + Delete` | Pixel vanishes in a poof (chat saved, screen watching off, brain unloaded). Press again: it pops back, waves hi, and starts a fresh chat. Use the **right** Shift key. |
 | Drag the cat | It dangles. Let go gently and it stays put; **fling it** and it flies, bonks off the sides of the screen, bounces on the floor and sits there dizzy for a second. Either way it stays where it ends up until you **double-click** it. |
 | Move the mouse back and forth over its head | A happy "meowww" with hearts. 💕 |
 | Click the cat while it shows **!** | Asks Pixel about the error it spotted on your screen. |
-| Tray icon (the cat's face) | Chat, Stay put, History, Notes, Settings, Connect Claude Code, Start with Windows, Quit. |
+| Tray icon (the cat's face) | Hide/Show Pixel, Chat, Stay put, History, Notes, Settings, Connect Claude Code, Start with Windows, Quit Pixel. |
 
 Ask in plain words: *"what's in this picture?"*, *"what does this error mean?"*, *"summarise this page"*,
 *"remind me in 20 minutes to stand up"*, *"start a pomodoro"*, *"note that the API key rotates on Friday"*,
-*"open VS Code"*, *"search the web for wpf layered windows"*.
-Anything that copies, opens, searches or reminds you later shows a **Do it?** card first.
+*"open notepad"*, *"search the web for wpf layered windows"*.
+Anything that copies, opens, searches or reminds you later shows a **Do it?** card first. Switch the 👁 eye off to
+ask something without sharing your screen.
 
 ## The cat notices
 
@@ -49,6 +111,35 @@ Anything that copies, opens, searches or reminds you later shows a **Do it?** ca
 - Cursor, VS Code, Codex busy (best effort, by CPU activity)
 - Full-screen video or game → hides in the corner and peeks
 - Water every 60 min, stretch every 45 min (only while you're at the PC); Pomodoro with a countdown badge
+
+## Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| "Windows protected your PC" | Click **More info → Run anyway**. |
+| I can't see the cat | It may be hidden: press `Ctrl + Right Shift + Delete`, or tray icon → **Show Pixel**. No tray icon? Start `Pixel.exe` again. |
+| The chat panel is blank or doesn't open | Install the [WebView2 runtime](https://developer.microsoft.com/microsoft-edge/webview2/), then quit and restart Pixel. |
+| `Ctrl + Win + Space` does nothing | Another app may use that shortcut — open the chat from the tray icon instead. |
+| The brain download fails | Check your internet and free disk space, then ask again; it resumes. Hugging Face must be reachable (some office or school networks block it). |
+| "Only X GB of RAM is free…" or very slow answers | Close some apps or browser tabs and ask again. |
+| It answers but doesn't know what's on screen | Switch the **👁 eye** on (next to the chat box). |
+| It answers something odd | The default brain is small to be fast. For harder questions pick a bigger brain in Settings (see below). |
+| Something else | Logs are in `%APPDATA%\Pixel\pixel.log` and `llama-server.log` — they never contain your screen. |
+
+## Update to a new version
+
+1. Right-click the tray icon → **Quit Pixel**.
+2. Download the new zip from the [latest release](https://github.com/sreevathson1530/pixel-cat/releases/latest) and
+   extract it **over your existing Pixel folder** (choose *Replace the files* if asked).
+3. Start `Pixel.exe` again. Your brain (`Documents\pixel`), settings, notes and chat history (`%APPDATA%\Pixel`) are kept.
+
+## Uninstall
+
+1. Tray icon → **Settings…** → untick **Start with Windows** → Save.
+2. Tray icon → **Quit Pixel**.
+3. Delete the Pixel folder, `%APPDATA%\Pixel` (settings, notes, history) and `Documents\pixel` (the brain).
+
+---
 
 ## Brain (local model)
 
@@ -65,8 +156,6 @@ text-only Qwen2.5-Coder 7B/14B are stronger at code but need 5–9 GB of free RA
 The brain loads in the background when Pixel starts and stays loaded (set `idleUnloadMinutes` in
 `%APPDATA%\Pixel\settings.json` to unload it after that many idle minutes instead). If memory is short Pixel says so
 instead of hanging; while it reads a long screen you'll see *reading… 42%*, and the send button turns into **Stop**.
-Each question takes a fresh look at the screen (Pixel's own windows are invisible to it). Switch the 👁 eye off
-in the chat to ask without the screen.
 
 ## Privacy
 
