@@ -45,7 +45,6 @@ public class ChipSynthTests
 {
     [Theory]
     [InlineData(SoundKind.Meow)]
-    [InlineData(SoundKind.Purr)]
     [InlineData(SoundKind.Poof)]
     public void Produces_a_valid_wav(SoundKind kind)
     {
@@ -71,4 +70,62 @@ public class ChipSynthTests
         static int Peak(byte[] w) => Enumerable.Range(0, (w.Length - 44) / 2).Max(i => Math.Abs((int)BitConverter.ToInt16(w, 44 + i * 2)));
         Assert.True(Peak(ChipSynth.Render(SoundKind.Meow, 0.9)) > Peak(ChipSynth.Render(SoundKind.Meow, 0.3)));
     }
+
+    private static short[] Samples(byte[] wav) =>
+        Enumerable.Range(0, (wav.Length - 44) / 2).Select(i => BitConverter.ToInt16(wav, 44 + i * 2)).ToArray();
+
+    private static double Rms(short[] s, double from, double to)
+    {
+        var a = (int)(s.Length * from);
+        var b = Math.Max(a + 1, (int)(s.Length * to));
+        return Math.Sqrt(s[a..b].Average(v => (double)v * v));
+    }
+
+    [Fact]
+    public void Meow_is_a_long_drawn_out_meowww()
+    {
+        var s = Samples(ChipSynth.Render(SoundKind.Meow, 0.8));
+        Assert.InRange(s.Length / 22050.0, 0.75, 1.2);
+    }
+
+    [Fact]
+    public void Meow_starts_softly_on_the_m_opens_up_then_fades_without_a_click()
+    {
+        var s = Samples(ChipSynth.Render(SoundKind.Meow, 0.8));
+        var m = Rms(s, 0.02, 0.07);      // lips still closed
+        var open = Rms(s, 0.2, 0.45);    // "ee-ah"
+        var tail = Rms(s, 0.97, 1.0);
+        Assert.True(open > m * 1.5, $"opens up: m={m:0} open={open:0}");
+        Assert.True(tail < open * 0.15, $"fades out: tail={tail:0}");
+        Assert.True(Math.Abs((int)s[0]) < 200 && Math.Abs((int)s[^1]) < 200, "no click at either end");
+    }
+
+    [Fact]
+    public void Meow_never_clips()
+    {
+        var s = Samples(ChipSynth.Render(SoundKind.Meow, 1.0));
+        Assert.True(s.Max(v => Math.Abs((int)v)) < short.MaxValue - 100);
+    }
+}
+
+public class CatSoundsTests
+{
+    [Fact]
+    public void Petting_makes_it_meow_not_purr() =>
+        Assert.Equal(SoundKind.Meow, CatSounds.For(Pixel.Core.Behaviour.Activity.Purr));
+
+    [Fact]
+    public void There_is_no_purr_sound_any_more() =>
+        Assert.DoesNotContain("Purr", Enum.GetNames<SoundKind>());
+
+    [Theory]
+    [InlineData(Pixel.Core.Behaviour.Activity.Alert, SoundKind.Meow)]
+    [InlineData(Pixel.Core.Behaviour.Activity.AgentNeedsYou, SoundKind.Meow)]
+    [InlineData(Pixel.Core.Behaviour.Activity.PoofOut, SoundKind.Poof)]
+    [InlineData(Pixel.Core.Behaviour.Activity.PoofIn, SoundKind.Poof)]
+    public void Other_moments_keep_their_sounds(Pixel.Core.Behaviour.Activity a, SoundKind expected) =>
+        Assert.Equal(expected, CatSounds.For(a));
+
+    [Fact]
+    public void Roaming_is_quiet() => Assert.Null(CatSounds.For(Pixel.Core.Behaviour.Activity.Roam));
 }

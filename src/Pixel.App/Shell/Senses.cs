@@ -8,7 +8,7 @@ using Pixel.Core.Sound;
 
 namespace Pixel.App.Shell;
 
-/// <summary>Soft meows, purrs and poofs, synthesised in memory at the user's volume.</summary>
+/// <summary>Soft meows and poofs, synthesised in memory at the user's volume.</summary>
 internal sealed class SoundService
 {
     private readonly AppHost _host;
@@ -22,14 +22,7 @@ internal sealed class SoundService
 
     private void OnActivity(Activity activity)
     {
-        var kind = activity switch
-        {
-            Activity.Purr => SoundKind.Purr,
-            Activity.Alert or Activity.AgentNeedsYou => SoundKind.Meow,
-            Activity.PoofOut or Activity.PoofIn => SoundKind.Poof,
-            _ => (SoundKind?)null,
-        };
-        if (kind is { } k) Play(k);
+        if (CatSounds.For(activity) is { } k) Play(k);
     }
 
     public void Play(SoundKind kind)
