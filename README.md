@@ -27,7 +27,7 @@ folder, `%APPDATA%\Pixel` and `Documents\pixel`.
 | Do this | What happens |
 |---|---|
 | `Ctrl + Win + Space` | Open / close the chat panel beside the cat. Pixel reads your screen as it opens. |
-| `Ctrl + Right Shift + Delete` | Pixel vanishes in a poof (chat saved, screen watching off, brain unloaded). Press again: back with a fresh chat. |
+| `Ctrl + Right Shift + Delete` | Pixel vanishes in a poof (chat saved, screen watching off, brain unloaded). Press again: it pops back, waves hi, and starts a fresh chat. |
 | Drag the cat | It dangles. Let go gently and it stays put; **fling it** and it flies, bonks off the sides of the screen, bounces on the floor and sits there dizzy for a second. Either way it stays where it ends up until you **double-click** it. |
 | Move the mouse back and forth over its head | Purring. 💕 |
 | Click the cat while it shows **!** | Asks Pixel about the error it spotted on your screen. |
@@ -41,7 +41,7 @@ Anything that copies, opens, searches or reminds you later shows a **Do it?** ca
 ## The cat notices
 
 - Typing → pulls a laptop out of its pocket and types; typing very fast → overheats (red + steam)
-- Scrolling → unrolls paper; fast mouse nearby → crouches and pounces
+- Fast mouse nearby → crouches and pounces
 - Errors in the active window (tracebacks, `npm ERR!`, compiler errors…) → runs over with a **!**
 - Claude Code working / done / waiting for you → laptop, celebration, wave (tray → *Connect Claude Code*)
 - Cursor, VS Code, Codex busy (best effort, by CPU activity)

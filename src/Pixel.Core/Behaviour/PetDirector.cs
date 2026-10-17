@@ -75,7 +75,7 @@ public sealed class PetDirector(MotionController motion, Roamer roamer)
             Activity.Hunt => AnimationId.Crouch,
             Activity.Purr => AnimationId.Purr,
             Activity.Knead => AnimationId.Knead,
-            Activity.Paper => AnimationId.Paper,
+            Activity.Greet => AnimationId.Hello,
             _ when laptopPhase is { } phase => phase,
             _ when _dashing => AnimationId.Run,
             _ => Roam(now, platforms, userIdleSeconds),
@@ -134,7 +134,7 @@ public sealed class PetDirector(MotionController motion, Roamer roamer)
         var airborne = !motion.Body.Grounded && motion.Mode != MotionMode.Held;
         if (airborne && activity is not (Activity.Dangle or Activity.PoofOut or Activity.PoofIn))
             anim = now < _bonkUntil ? AnimationId.Bonk : motion.Body.Vy < 0 ? AnimationId.Jump : AnimationId.Fall;
-        else if (now < _dazedUntil && activity is Activity.Roam or Activity.Hunt or Activity.Purr or Activity.Paper)
+        else if (now < _dazedUntil && activity is Activity.Roam or Activity.Hunt or Activity.Purr)
         {
             anim = AnimationId.Dazed; // dizzy for a moment after a throw; nothing else until it shakes it off
             motion.Stop();
@@ -200,7 +200,7 @@ public sealed class PetDirector(MotionController motion, Roamer roamer)
             _huntTargetY = CursorY;
         }
         if (_pounceAt is null) return selected == Activity.Hunt && !motion.Body.Grounded ? Activity.Roam : selected;
-        if (selected is Activity.Roam or Activity.Hunt or Activity.Purr or Activity.Knead or Activity.Paper)
+        if (selected is Activity.Roam or Activity.Hunt or Activity.Purr or Activity.Knead)
             return Activity.Hunt;
         _pounceAt = null; // something more important interrupted the hunt
         return selected;

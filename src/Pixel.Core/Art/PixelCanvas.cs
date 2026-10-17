@@ -121,8 +121,8 @@ internal static class Ix
         Ear = 8, Nose = 9, Line = 10;
 
     public const byte FirstFx = 16;
-    public const byte FxWhite = 16, FxInk = 17, FxRed = 18, FxYellow = 19, FxSteam = 20, FxPaper = 21,
-        FxPaperLine = 22, FxLaptop = 23, FxScreen = 24, FxHeart = 25, FxZ = 26, FxKey = 27, FxCloud = 28,
+    public const byte FxWhite = 16, FxInk = 17, FxRed = 18, FxYellow = 19, FxSteam = 20,
+        FxLaptop = 23, FxScreen = 24, FxHeart = 25, FxZ = 26, FxKey = 27, FxCloud = 28,
         FxLaptopDark = 29, FxCode = 30, FxCloudShade = 31;
 
     public static byte FromChar(char c) => c switch
@@ -156,8 +156,6 @@ internal static class Ix
         m[FxRed] = 0xFFFF4D3D;
         m[FxYellow] = 0xFFFFD23F;
         m[FxSteam] = 0xFFC9CBD6;
-        m[FxPaper] = 0xFFFAF6EA;
-        m[FxPaperLine] = 0xFFC8BFA8;
         m[FxLaptop] = 0xFFA3ACBE;
         m[FxScreen] = 0xFF1E2A3A;
         m[FxHeart] = 0xFFFF6B9A;

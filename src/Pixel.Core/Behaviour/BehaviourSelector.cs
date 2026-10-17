@@ -19,13 +19,15 @@ public sealed record PetSignals
     public bool Hunting { get; init; }
     public bool Purring { get; init; }
     public bool Typing { get; init; }
-    public bool Scrolling { get; init; }
+
+    /// <summary>Just came back from a vanish: wave hello.</summary>
+    public bool Greeting { get; init; }
 }
 
 public enum Activity
 {
     Roam, Dangle, PoofOut, PoofIn, Thinking, Talk, Peek, AgentWorking, AgentDone, AgentNeedsYou,
-    Alert, Overheat, Hunt, Purr, Knead, Paper,
+    Alert, Overheat, Hunt, Purr, Knead, Greet,
 }
 
 /// <summary>Picks the single most important thing the cat should be doing (spec §3 priority list).</summary>
@@ -39,6 +41,7 @@ public static class BehaviourSelector
         if (s.Chat == ChatState.Thinking) return Activity.Thinking;
         if (s.Chat == ChatState.Talking) return Activity.Talk;
         if (s.FocusMode) return Activity.Peek;
+        if (s.Greeting) return Activity.Greet;
         switch (s.Agent)
         {
             case AgentState.NeedsYou: return Activity.AgentNeedsYou;
@@ -50,7 +53,6 @@ public static class BehaviourSelector
         if (s.Hunting) return Activity.Hunt;
         if (s.Purring) return Activity.Purr;
         if (s.Typing) return Activity.Knead;
-        if (s.Scrolling) return Activity.Paper;
         return Activity.Roam;
     }
 }

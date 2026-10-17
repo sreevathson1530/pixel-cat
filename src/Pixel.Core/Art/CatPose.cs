@@ -22,10 +22,10 @@ public enum Effect
     Hearts = 1 << 3,
     Sparkles = 1 << 4,
     Steam = 1 << 5,
-    Paper = 1 << 8,
     Poof = 1 << 9,
     Dots = 1 << 10,
     Stars = 1 << 11,
+    Hi = 1 << 12,
 }
 
 /// <summary>Everything needed to draw one frame of the cat.</summary>

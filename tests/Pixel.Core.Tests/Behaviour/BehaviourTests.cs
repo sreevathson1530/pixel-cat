@@ -11,8 +11,7 @@ public class BehaviourSelectorTests
     public static TheoryData<PetSignals, Activity> Priorities => new()
     {
         { Calm, Activity.Roam },
-        { Calm with { Scrolling = true }, Activity.Paper },
-        { Calm with { Scrolling = true, Typing = true }, Activity.Knead },
+        { Calm with { Typing = true }, Activity.Knead },
         { Calm with { Typing = true, Purring = true }, Activity.Purr },
         { Calm with { Purring = true, Hunting = true }, Activity.Hunt },
         { Calm with { Hunting = true, Overheated = true }, Activity.Overheat },
@@ -20,6 +19,9 @@ public class BehaviourSelectorTests
         { Calm with { Alert = true, Agent = AgentState.Working }, Activity.AgentWorking },
         { Calm with { Agent = AgentState.Done }, Activity.AgentDone },
         { Calm with { Agent = AgentState.NeedsYou }, Activity.AgentNeedsYou },
+        { Calm with { Agent = AgentState.Working, Greeting = true }, Activity.Greet },
+        { Calm with { Greeting = true, FocusMode = true }, Activity.Peek },
+        { Calm with { Greeting = true, Chat = ChatState.Thinking }, Activity.Thinking },
         { Calm with { Agent = AgentState.Working, FocusMode = true }, Activity.Peek },
         { Calm with { FocusMode = true, Chat = ChatState.Thinking }, Activity.Thinking },
         { Calm with { Chat = ChatState.Talking }, Activity.Talk },

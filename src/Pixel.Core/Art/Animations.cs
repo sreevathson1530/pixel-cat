@@ -2,9 +2,9 @@ namespace Pixel.Core.Art;
 
 public enum AnimationId
 {
-    Idle, Walk, Run, Jump, Fall, Sleep, Groom, Stretch, Purr, Crouch, Knead, Overheat, Paper,
+    Idle, Walk, Run, Jump, Fall, Sleep, Groom, Stretch, Purr, Crouch, Knead, Overheat,
     Working, Celebrate, Wave, Alert, Confused, Peek, Dangle, PoofOut, PoofIn, Talk, Thinking,
-    LaptopOut, LaptopIdle, LaptopAway, Bonk, Dazed,
+    LaptopOut, LaptopIdle, LaptopAway, Bonk, Dazed, Hello,
 }
 
 public sealed record Frame(CatPose Pose, int Ms);
@@ -139,13 +139,6 @@ public static class Animations
             new(hot with { Paws = PawState.LeftUp, EffectFrame = 2 }, 90),
             new(hot with { Paws = PawState.RightUp, EffectFrame = 3, BodyDx = 1 }, 90));
 
-        var paper = Sit with { Effect = Effect.Paper, Eyes = EyeState.Wide };
-        Add(AnimationId.Paper, true,
-            new(paper with { EffectFrame = 0, Paws = PawState.LeftUp }, 140),
-            new(paper with { EffectFrame = 1 }, 140),
-            new(paper with { EffectFrame = 2, Paws = PawState.LeftUp }, 140),
-            new(paper with { EffectFrame = 3 }, 140));
-
         var work = typing;
         Add(AnimationId.Working, true,
             new(work with { Paws = PawState.LeftUp, EffectFrame = 0 }, 150),
@@ -159,6 +152,17 @@ public static class Animations
             new(joy with { BodyDy = -5, EffectFrame = 1 }, 140),
             new(joy with { BodyDy = -3, EffectFrame = 2 }, 140),
             new(joy with { BodyDy = 0, EffectFrame = 3 }, 220));
+
+        // Back from a vanish: waves hello with one paw and says "hi!".
+        var hello = Sit with { Eyes = EyeState.Happy, Effect = Effect.Hi };
+        Add(AnimationId.Hello, false,
+            new(hello with { Paws = PawState.WaveUp, Mouth = MouthState.Open }, 220),
+            new(hello with { Paws = PawState.WaveDown }, 220),
+            new(hello with { Paws = PawState.WaveUp, Mouth = MouthState.Open }, 220),
+            new(hello with { Paws = PawState.WaveDown }, 220),
+            new(hello with { Paws = PawState.WaveUp, Mouth = MouthState.Open }, 220),
+            new(hello with { Paws = PawState.WaveDown }, 220),
+            new(Sit with { Eyes = EyeState.Happy }, 260));
 
         Add(AnimationId.Wave, true,
             new(Sit with { Paws = PawState.WaveUp, Mouth = MouthState.Open }, 240),

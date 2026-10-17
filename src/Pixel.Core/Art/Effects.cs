@@ -1,7 +1,7 @@
 namespace Pixel.Core.Art;
 
 /// <summary>
-/// Props and particles around the cat. "Attached" props (laptop, keyboard, paper) live in cat space and are
+/// Props and particles around the cat. "Attached" props (the laptop) live in cat space and are
 /// mirrored with it; "floating" ones (bubbles, zZ, hearts…) are drawn after mirroring so text never flips.
 /// Every effect gets an ink outline so it stays readable on any wallpaper.
 /// </summary>
@@ -15,6 +15,10 @@ internal static class Effects
     private static readonly string[] QuestionGlyph =
         [".iiii..", "ii..ii.", "....ii.", "...ii..", "..ii...", ".......", "..ii...", "..ii..."];
 
+    // "hi!" in a 1px font with a white margin: at this size thicker strokes, or letters touching the border, read as noise.
+    private static readonly string[] HiGlyph =
+        [".........", ".i...i.i.", ".i.....i.", ".iii.i.i.", ".i.i.i...", ".i.i.i.i.", "........."];
+
     public static void DrawAttached(PixelCanvas c, CatPose p)
     {
         var f = p.EffectFrame;
@@ -22,16 +26,6 @@ internal static class Effects
         var behind = new PixelCanvas(W, H);
 
         if (p.Body == BodyShape.Sit && p.Laptop != LaptopStage.None) Laptop(front, p, f);
-
-        if (p.Effect.HasFlag(Effect.Paper))
-        {
-            var len = 4 + (((f % 4) + 4) % 4) * 4;
-            behind.Rect(32, 37, Math.Min(W - 2, 32 + len), 38, Ix.FxPaper);
-            for (var x = 34; x <= Math.Min(W - 2, 32 + len); x += 3) behind.Set(x, 37, Ix.FxPaperLine);
-            front.Rect(32, 31, 33, 36, Ix.FxPaper);
-            front.Ellipse(31, 30, 2.2, 2.2, Ix.FxPaper);
-            front.Set(31, 30, Ix.FxPaperLine);
-        }
 
         InkOutline(behind);
         InkOutline(front);
@@ -139,6 +133,7 @@ internal static class Effects
         {
             if (p.Effect.HasFlag(Effect.Exclaim)) Bubble(c, hx + 12, hy - 9, ExclaimGlyph);
             if (p.Effect.HasFlag(Effect.Question)) Bubble(c, hx + 12, hy - 9, QuestionGlyph);
+            if (p.Effect.HasFlag(Effect.Hi)) Bubble(c, hx - 12, hy - 10, HiGlyph, tailRight: true); // up-left, clear of the waving paw
             if (p.Effect.HasFlag(Effect.Dots)) Dots(c, hx + 11, hy - 3, f);
 
             if (p.Effect.HasFlag(Effect.Zz))
@@ -221,18 +216,19 @@ internal static class Effects
         }
     }
 
-    /// <summary>Speech bubble 9×10 (+1px tail) holding a 7×8 glyph, clamped inside the canvas.</summary>
-    private static void Bubble(PixelCanvas c, int x, int y, string[] glyph)
+    /// <summary>Speech bubble around a glyph (1px border, +1px tail on the left or right), clamped inside the canvas.</summary>
+    private static void Bubble(PixelCanvas c, int x, int y, string[] glyph, bool tailRight = false)
     {
-        x = Math.Clamp(x, 0, W - 9);
-        y = Math.Clamp(y, 0, H - 11);
-        c.Rect(x + 1, y, x + 7, y, Ix.FxInk);
-        c.Rect(x + 1, y + 9, x + 7, y + 9, Ix.FxInk);
-        c.Rect(x, y + 1, x, y + 8, Ix.FxInk);
-        c.Rect(x + 8, y + 1, x + 8, y + 8, Ix.FxInk);
-        c.Rect(x + 1, y + 1, x + 7, y + 8, Ix.FxWhite);
+        int gw = glyph[0].Length, gh = glyph.Length;
+        x = Math.Clamp(x, 0, W - (gw + 2));
+        y = Math.Clamp(y, 0, H - (gh + 3));
+        c.Rect(x + 1, y, x + gw, y, Ix.FxInk);
+        c.Rect(x + 1, y + gh + 1, x + gw, y + gh + 1, Ix.FxInk);
+        c.Rect(x, y + 1, x, y + gh, Ix.FxInk);
+        c.Rect(x + gw + 1, y + 1, x + gw + 1, y + gh, Ix.FxInk);
+        c.Rect(x + 1, y + 1, x + gw, y + gh, Ix.FxWhite);
         c.Blit(glyph, x + 1, y + 1);
-        c.Set(x + 1, y + 10, Ix.FxInk);
+        c.Set(tailRight ? x + gw : x + 1, y + gh + 2, Ix.FxInk);
     }
 
     /// <summary>"Thinking" bubble with three dots; the active dot cycles with the frame.</summary>

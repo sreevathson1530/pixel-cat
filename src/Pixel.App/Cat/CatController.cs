@@ -38,6 +38,7 @@ internal sealed class CatController
     private (Frame Frame, RenderOptions Options)? _drawn;
     private bool _pressed, _dragging;
     private readonly ThrowTracker _throw = new();
+    private double _greetUntil = double.NegativeInfinity;
     private Point _pressAt;
     private Action? _onVanished;
     private bool _userStaying;
@@ -194,7 +195,7 @@ internal sealed class CatController
             Hunting = !_dragging && HuntRule.ShouldHunt(_meter.MouseSpeed, distance),
             Purring = _petting.IsPurring(now),
             Typing = _meter.IsTyping,
-            Scrolling = _meter.IsScrolling,
+            Greeting = now < _greetUntil,
         };
 
         _director.CursorX = cursor.X;
@@ -223,6 +224,7 @@ internal sealed class CatController
         else if (_director.Animation == AnimationId.PoofIn)
         {
             Overlay = Overlay with { Poof = PoofState.None };
+            _greetUntil = now + Animations.Get(AnimationId.Hello).TotalMs / 1000.0; // back: wave hi
         }
     }
 
